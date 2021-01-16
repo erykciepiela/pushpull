@@ -6,6 +6,9 @@ import Data.Void
 
 newtype Push a = Push (a -> IO ())
 
+push :: Push a -> a -> IO ()
+push (Push p) = p
+
 instance Contravariant Push where
   contramap f (Push p) = Push (p . f)
 
@@ -21,8 +24,10 @@ instance Decidable Push where
     Right b2 -> p2 b2
   lose f = Push $ absurd . f
 
-insert :: (b -> a) -> Push a -> Push b
+insert :: (b -> a) -> Push a -> Push b -- 2
 insert = contramap
+
+infixr 0 `insert`
 
 split :: (a -> (b, c)) -> Push b -> Push c -> Push a
 split = divide
@@ -38,11 +43,14 @@ route = choose
 never :: Push Void
 never = lose id
 
-filter :: (a -> Maybe b) -> Push b -> Push a
+filter :: (a -> Maybe b) -> Push b -> Push a -- 2
 filter f = choose (maybe (Left ()) Right . f) void
 
 
 newtype Pull a = Pull (IO a)
+
+pull :: Pull a -> IO a
+pull (Pull p) = p
 
 instance Functor Pull where
   fmap f (Pull p) = Pull $ fmap f p
@@ -57,8 +65,10 @@ instance Monad Pull where
     (Pull io) <- f <$> p
     io
 
-extract :: (a -> b) -> Pull a -> Pull b
-extract = fmap
+extract :: Pull a -> (a -> b) -> Pull b -- 2
+extract = flip fmap
+
+infixl 0 `extract`
 
 combine :: (a -> b -> c) -> Pull a -> Pull b -> Pull c
 combine f (Pull p1) (Pull p2) = Pull $ f <$> p1 <*> p2
@@ -67,13 +77,13 @@ combine f (Pull p1) (Pull p2) = Pull $ f <$> p1 <*> p2
 nothing :: Pull ()
 nothing = pure ()
 
-select :: (a -> Pull b) -> Pull a -> Pull b
+select :: (a -> Pull b) -> Pull a -> Pull b -- 2
 select = (=<<)
 
 -- identity to select: select value p = p
 value :: a -> Pull a
 value = return
 
-zip :: Pull a -> Pull b -> Pull (a, b)
+zip :: Pull a -> Pull b -> Pull (a, b) -- 2
 zip p1 p2 = (,) <$> p1 <*> p2
 

@@ -21,8 +21,8 @@ instance Decidable Push where
     Right b2 -> p2 b2
   lose f = Push $ absurd . f
 
-prepend :: (b -> a) -> Push a -> Push b
-prepend = contramap
+insert :: (b -> a) -> Push a -> Push b
+insert = contramap
 
 split :: (a -> (b, c)) -> Push b -> Push c -> Push a
 split = divide
@@ -57,8 +57,8 @@ instance Monad Pull where
     (Pull io) <- f <$> p
     io
 
-append :: (a -> b) -> Pull a -> Pull b
-append = fmap
+extract :: (a -> b) -> Pull a -> Pull b
+extract = fmap
 
 combine :: (a -> b -> c) -> Pull a -> Pull b -> Pull c
 combine f (Pull p1) (Pull p2) = Pull $ f <$> p1 <*> p2

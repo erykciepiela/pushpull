@@ -3,6 +3,7 @@ module PushPull where
 import Data.Functor.Contravariant
 import Data.Functor.Contravariant.Divisible
 import Data.Void
+import Data.IORef
 
 newtype Push a = Push (a -> IO ())
 
@@ -102,3 +103,23 @@ always = return
 zip :: Pull a -> Pull b -> Pull (a, b)
 zip p1 p2 = (,) <$> p1 <*> p2
 
+data Cell a b = Cell {
+  writeCell :: Push a,
+  readCell :: Pull b
+}
+
+latest :: IO (Cell a (Maybe a))
+latest = do
+  ref <- newIORef Nothing
+  return $ Cell {
+    writeCell = Push $ writeIORef ref . Just,
+    readCell = Pull $ readIORef ref
+  }
+
+all :: IO (Cell a [a])
+all = do
+  ref <- newIORef []
+  return $ Cell {
+    writeCell = Push $ modifyIORef' ref . (:),
+    readCell = Pull $ readIORef ref
+  }

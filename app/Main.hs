@@ -1,6 +1,8 @@
 module Main where
 
 import PushPull
+import Control.Concurrent
+import Control.Monad
 
 printToConsole :: Push String
 printToConsole = Push putStrLn
@@ -26,10 +28,11 @@ foo2 = retain odd $ insert show $ forkIf (\a -> length a > 9) (writeToFile "/tmp
 
 main :: IO ()
 main = do
-  -- let foo = accept odd $ insert show printToConsole
-  -- let foo = accept odd $ insert show $ writeToFile "/tmp/foo"
-  push foo2 1000000001
-  let bar = extract odd $ extract read readFromConsole
-  f <- pull bar
-  print f
-  return ()
+  cell <- PushPull.all
+  forkIO $ forever $ do
+    v <- pull (readCell cell)
+    print v
+    threadDelay 1000000
+  forever $ do
+    l <- getLine
+    push (writeCell cell) l

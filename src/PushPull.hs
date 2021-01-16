@@ -42,17 +42,8 @@ route = choose
 never :: Push Void
 never = lose id
 
-retain :: (a -> Bool) -> Push a -> Push a
-retain f = choose (\a -> if f a then Right a else Left ()) void
-infixr 0 `retain`
-
-remove :: (a -> Bool) -> Push a -> Push a
-remove f = retain (not . f)
-infixr 0 `remove`
-
 select :: (a -> Maybe b) -> Push b -> Push a
 select f = choose (maybe (Left ()) Right . f) void
-infixr 0 `select`
 
 fork :: Push a -> Push a -> Push a
 fork = split (\a -> (a, a))
@@ -65,6 +56,13 @@ routeIf f = route (\a -> (if f a then Left else Right) a)
 
 forkIf :: (a -> Bool) -> Push a -> Push a -> Push a
 forkIf f thenPush = split (\a -> (if f a then Just a else Nothing, a)) (select id thenPush)
+
+retain :: (a -> Bool) -> Push a -> Push a
+retain f p = routeIf f p void
+
+remove :: (a -> Bool) -> Push a -> Push a
+remove f = retain (not . f)
+
 
 newtype Pull a = Pull (IO a)
 
@@ -86,7 +84,6 @@ instance Monad Pull where
 
 extract :: (a -> b) -> Pull a -> Pull b
 extract = fmap
-infixl 0 `extract`
 
 combine :: (a -> b -> c) -> Pull a -> Pull b -> Pull c
 combine f (Pull p1) (Pull p2) = Pull $ f <$> p1 <*> p2
@@ -97,7 +94,6 @@ nothing = pure ()
 
 switch :: Pull a -> (a -> Pull b) -> Pull b -- 2
 switch = (>>=)
-infixl 0 `switch`
 
 -- identity to switch: p `switch` always = p
 always :: a -> Pull a

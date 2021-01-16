@@ -10,6 +10,9 @@ readFromConsole = Pull getLine
 
 main :: IO ()
 main = do
-  push (odd `insert` show `insert` printToConsole) 1
-  f <- pull (readFromConsole `extract` read `extract` odd)
+  let foo = accept odd $ insert show printToConsole
+  push foo 1
+  let bar = extract odd $ extract read readFromConsole
+  f <- pull bar
+  print f
   return ()

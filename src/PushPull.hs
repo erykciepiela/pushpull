@@ -68,3 +68,6 @@ select = (=<<)
 always :: a -> Pull a
 always = return
 
+zip :: Pull a -> Pull b -> Pull (a, b)
+zip p1 p2 = (,) <$> p1 <*> p2
+

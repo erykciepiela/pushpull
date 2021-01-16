@@ -42,17 +42,29 @@ route = choose
 never :: Push Void
 never = lose id
 
-accept :: (a -> Bool) -> Push a -> Push a
-accept f = choose (\a -> if f a then Right a else Left ()) void
-infixr 0 `accept`
+retain :: (a -> Bool) -> Push a -> Push a
+retain f = choose (\a -> if f a then Right a else Left ()) void
+infixr 0 `retain`
 
-discard :: (a -> Bool) -> Push a -> Push a
-discard f = accept (not . f)
-infixr 0 `discard`
+remove :: (a -> Bool) -> Push a -> Push a
+remove f = retain (not . f)
+infixr 0 `remove`
 
 select :: (a -> Maybe b) -> Push b -> Push a
 select f = choose (maybe (Left ()) Right . f) void
 infixr 0 `select`
+
+fork :: Push a -> Push a -> Push a
+fork = split (\a -> (a, a))
+
+forkN :: [Push a] -> Push a
+forkN = foldr fork void
+
+routeIf :: (a -> Bool) -> Push a -> Push a -> Push a
+routeIf f = route (\a -> (if f a then Left else Right) a)
+
+forkIf :: (a -> Bool) -> Push a -> Push a -> Push a
+forkIf f thenPush = split (\a -> (if f a then Just a else Nothing, a)) (select id thenPush)
 
 newtype Pull a = Pull (IO a)
 

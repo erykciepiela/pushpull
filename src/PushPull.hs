@@ -103,6 +103,12 @@ always = return
 zip :: Pull a -> Pull b -> Pull (a, b)
 zip p1 p2 = (,) <$> p1 <*> p2
 
+-- combining Push and Pull
+enrich :: Pull a -> Push (a, b) -> Push b
+enrich (Pull pull) (Push push) = Push $ \b -> do
+  a <- pull
+  push (a, b)
+
 data Cell a b = Cell {
   writeCell :: Push a,
   readCell :: Pull b
@@ -123,3 +129,4 @@ all = do
     writeCell = Push $ modifyIORef' ref . (:),
     readCell = Pull $ readIORef ref
   }
+

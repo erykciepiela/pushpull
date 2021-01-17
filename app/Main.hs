@@ -3,6 +3,7 @@ module Main where
 import PushPull
 import Control.Concurrent
 import Control.Monad
+import Data.Time
 
 printToConsole :: Push String
 printToConsole = Push putStrLn
@@ -12,6 +13,9 @@ writeToFile fp = Push $ writeFile fp
 
 readFromConsole :: Pull String
 readFromConsole = Pull getLine
+
+currentTime :: Pull UTCTime
+currentTime = Pull getCurrentTime
 
 foo :: Push Int
 foo = retain odd $ insert show $ forkN
@@ -25,14 +29,17 @@ foo1 = retain odd $ insert show $ routeIf (\a -> length a > 9) (writeToFile "/tm
 foo2 :: Push Int
 foo2 = retain odd $ insert show $ forkIf (\a -> length a > 9) (writeToFile "/tmp/foo") $ printToConsole
 
+foo3 :: Push String
+foo3 = enrich currentTime $ insert show $ printToConsole
 
 main :: IO ()
 main = do
-  cell <- PushPull.all
-  forkIO $ forever $ do
-    v <- pull (readCell cell)
-    print v
-    threadDelay 1000000
-  forever $ do
-    l <- getLine
-    push (writeCell cell) l
+  push foo3 "hello"
+  -- cell <- PushPull.all
+  -- forkIO $ forever $ do
+  --   v <- pull (readCell cell)
+  --   print v
+  --   threadDelay 1000000
+  -- forever $ do
+  --   l <- getLine
+  --   push (writeCell cell) l

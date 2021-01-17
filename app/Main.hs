@@ -24,7 +24,7 @@ main :: IO ()
 main = do
   printToConsole <- mkPush putStrLn
   writeToFile <- mkPush $ writeFile "/tmp/foo"
-  let foo3 = contextualize (\a c -> (a, pushTime c)) $ insert show $ printToConsole
+  let foo3 = contextualize (\a c -> (a, currentTime c, currentUser c)) $ insert show $ printToConsole
   push foo3 "hello"
   threadDelay 1000000
   -- cell <- PushPull.all

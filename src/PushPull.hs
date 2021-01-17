@@ -10,18 +10,19 @@ import Control.Concurrent.STM
 import Control.Concurrent.STM.TBQueue
 import Control.Monad (forever)
 
-data PushContext = PushContext {
-  pushTime :: UTCTime
+data PushPullContext = PushPullContext {
+  currentTime :: UTCTime,
+  currentUser :: String
 }
 
-getPushContext :: IO PushContext
-getPushContext = PushContext <$> getCurrentTime
+getPPContext :: IO PushPullContext
+getPPContext = PushPullContext <$> getCurrentTime <*> pure "anonymous user"
 
-newtype Push a = Push (PushContext -> a -> STM ())
+newtype Push a = Push (PushPullContext -> a -> STM ())
 
 push :: Push a -> a -> IO ()
 push (Push p) a = do
-  c <- getPushContext
+  c <- getPPContext
   atomically $ p c a
 
 instance Contravariant Push where
@@ -78,33 +79,34 @@ retain f p = routeIf f p void
 remove :: (a -> Bool) -> Push a -> Push a
 remove f = retain (not . f)
 
-contextualize :: (a -> PushContext -> b) -> Push b -> Push a
+contextualize :: (a -> PushPullContext -> b) -> Push b -> Push a
 contextualize f (Push push) = Push $ \c a -> push c (f a c)
 
-
-newtype Pull a = Pull (STM a)
+newtype Pull a = Pull (PushPullContext -> STM a)
 
 pull :: Pull a -> IO a
-pull (Pull p) = atomically p
+pull (Pull p) = do
+  c <- getPPContext
+  atomically $ p c
 
 instance Functor Pull where
-  fmap f (Pull p) = Pull $ fmap f p
+  fmap f (Pull p) = Pull $ fmap f . p
 
 instance Applicative Pull where
-  pure = Pull . return
-  Pull f <*> Pull a = Pull $ f <*> a
+  pure = Pull . const . return
+  Pull f <*> Pull a = Pull $ \c -> f c <*> a c
 
 instance Monad Pull where
   return = pure
-  (Pull p) >>= f = Pull $ do
-    (Pull io) <- f <$> p
-    io
+  (Pull p) >>= f = Pull $ \c -> do
+    (Pull io) <- f <$> p c
+    io c
 
 extract :: (a -> b) -> Pull a -> Pull b
 extract = fmap
 
 combine :: (a -> b -> c) -> Pull a -> Pull b -> Pull c
-combine f (Pull p1) (Pull p2) = Pull $ f <$> p1 <*> p2
+combine f (Pull p1) (Pull p2) = Pull $ \c -> f <$> p1 c <*> p2 c
 
 -- identity to combine: combine f nothing p ~= p
 nothing :: Pull ()
@@ -123,8 +125,13 @@ zip p1 p2 = (,) <$> p1 <*> p2
 -- combining Push and Pull
 enrich :: Pull a -> Push (a, b) -> Push b
 enrich (Pull pull) (Push push) = Push $ \c b -> do
-  a <- pull
+  a <- pull c
   push c (a, b)
+
+contextualize' :: (a -> PushPullContext -> b) -> Pull a -> Pull b
+contextualize' f (Pull p) = Pull $ \c -> do
+  a <- p c
+  return (f a c)
 
 data Cell a b = Cell {
   writeCell :: Push a,
@@ -136,7 +143,7 @@ latest = atomically $ do
   var <- newTMVar Nothing
   return $ Cell {
     writeCell = Push $ const $ putTMVar var . Just,
-    readCell = Pull $ readTMVar var
+    readCell = Pull $ const $ readTMVar var
   }
 
 all :: IO (Cell a [a])
@@ -144,7 +151,7 @@ all = atomically $ do
   var <- newTMVar []
   return $ Cell {
     writeCell = Push $ const $ modifyTMVar var . (:),
-    readCell = Pull $ readTMVar var
+    readCell = Pull $ const $ readTMVar var
   }
     where
       modifyTMVar :: TMVar a -> (a -> a) -> STM ()

@@ -1,5 +1,5 @@
 module PushPull where
-
+import Data.Functor (($>))
 import Data.Functor.Contravariant
 import Data.Functor.Contravariant.Divisible
 import Data.Void
@@ -7,10 +7,18 @@ import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TBQueue
 import Control.Monad (forever)
+import Data.List
 
-newtype Push ctx a = Push (ctx -> a -> STM ())
+type Failure = [String]
 
-push :: IO ctx -> Push ctx a -> a -> IO ()
+printFailure :: Failure -> IO ()
+printFailure failure = putStrLn $ "Failure: " <> intercalate ", " failure
+
+type R a = Either Failure a
+
+newtype Push ctx a = Push (ctx -> a -> STM (R ()))
+
+push :: IO ctx -> Push ctx a -> a -> IO (R ())
 push getContext (Push p) a = do
   c <- getContext
   atomically $ p c a
@@ -22,7 +30,7 @@ instance Divisible (Push ctx) where
   divide f (Push p1) (Push p2) = Push $ \c a -> let (b1, b2) = f a in do
     p1 c b1
     p2 c b2
-  conquer = Push $ const $ const $ return ()
+  conquer = Push $ const $ const $ return $ return ()
 
 instance Decidable (Push ctx) where
   choose f (Push p1) (Push p2) = Push $ \c a -> case f a of
@@ -72,31 +80,39 @@ remove f = retain (not . f)
 contextualize :: (a -> ctx -> b) -> Push ctx b -> Push ctx a
 contextualize f (Push push) = Push $ \c a -> push c (f a c)
 
-newtype Pull ctx a = Pull (ctx -> STM a)
+fail :: String -> Push ctx a
+fail message = Push $ const $ const $ return $ Left [message]
 
-pull :: IO ctx -> Pull ctx a -> IO a
+newtype Pull ctx a = Pull (ctx -> STM (R a))
+
+pull :: IO ctx -> Pull ctx a -> IO (R a)
 pull getContext (Pull p) = do
   c <- getContext
   atomically $ p c
 
 instance Functor (Pull ctx) where
-  fmap f (Pull p) = Pull $ fmap f . p
+  fmap f (Pull p) = Pull $ fmap (fmap f) . p
 
 instance Applicative (Pull ctx) where
-  pure = Pull . const . return
-  Pull f <*> Pull a = Pull $ \c -> f c <*> a c
+  pure = Pull . const . return . return
+  Pull f <*> Pull a = Pull $ \c -> do
+    rf <- f c
+    ra <- a c
+    return $ rf <*> ra
 
 instance Monad (Pull ctx) where
   return = pure
   (Pull p) >>= f = Pull $ \c -> do
-    (Pull io) <- f <$> p c
-    io c
+    eitherPullOrFailure <- fmap f <$> p c
+    case eitherPullOrFailure of
+      Left f -> return $ Left f
+      Right (Pull p') -> p' c
 
 extract :: (a -> b) -> Pull ctx a -> Pull ctx b
 extract = fmap
 
 combine :: (a -> b -> c) -> Pull ctx a -> Pull ctx b -> Pull ctx c
-combine f (Pull p1) (Pull p2) = Pull $ \c -> f <$> p1 c <*> p2 c
+combine f p1 p2 = f <$> p1 <*> p2
 
 -- identity to combine: combine f nothing p ~= p
 nothing :: Pull ctx ()
@@ -115,13 +131,21 @@ zip p1 p2 = (,) <$> p1 <*> p2
 -- combining Push ctx and Pull
 enrich :: Pull ctx a -> Push ctx (a, b) -> Push ctx b
 enrich (Pull pull) (Push push) = Push $ \c b -> do
-  a <- pull c
-  push c (a, b)
+  eitherAOrFailure <- pull c
+  case eitherAOrFailure of
+    Left f -> return $ Left f
+    Right a -> push c (a, b)
 
 contextualize' :: (a -> ctx -> b) -> Pull ctx a -> Pull ctx b
 contextualize' f (Pull p) = Pull $ \c -> do
-  a <- p c
-  return (f a c)
+  eitherAOrFailure <- p c
+  return $ case eitherAOrFailure of
+    Left f -> Left f
+    Right a -> Right $ f a c
+
+fail' :: String -> Pull ctx a
+fail' message = Pull $ const $ return $ Left [message]
+
 
 data Cell a b = Cell {
   writeCell :: forall ctx . Push ctx a,
@@ -132,16 +156,16 @@ latest :: IO (Cell a (Maybe a))
 latest = atomically $ do
   var <- newTMVar Nothing
   return $ Cell {
-    writeCell = Push $ const $ putTMVar var . Just,
-    readCell = Pull $ const $ readTMVar var
+    writeCell = Push $ const $ \a -> putTMVar var (Just a) $> Right (),
+    readCell = Pull $ const $ Right <$> readTMVar var
   }
 
 all :: IO (Cell a [a])
 all = atomically $ do
   var <- newTMVar []
   return $ Cell {
-    writeCell = Push $ const $ modifyTMVar var . (:),
-    readCell = Pull $ const $ readTMVar var
+    writeCell = Push $ const $ \a -> modifyTMVar var (a:) $> Right (),
+    readCell = Pull $ const $ Right <$> readTMVar var
   }
     where
       modifyTMVar :: TMVar a -> (a -> a) -> STM ()
@@ -155,5 +179,5 @@ mkPush io = do
     forkIO $ forever $ do
       a <- atomically $ readTBQueue q
       io a
-    return $ Push $ const $ writeTBQueue q
+    return $ Push $ const $ \a -> writeTBQueue q a $> Right ()
 

@@ -3,8 +3,6 @@ module PushPull where
 import Data.Functor.Contravariant
 import Data.Functor.Contravariant.Divisible
 import Data.Void
-import Data.IORef
-import Data.Time
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TBQueue

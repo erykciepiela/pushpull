@@ -7,13 +7,14 @@ import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TBQueue
 import Control.Monad (forever)
+import Control.Exception.Base
 
 newtype Push ctx a = Push (ctx -> a -> STM ())
 
-push :: IO ctx -> Push ctx a -> a -> IO ()
+push :: Exception e => IO ctx -> Push ctx a -> a -> IO (Either e ())
 push getContext (Push p) a = do
   c <- getContext
-  atomically $ p c a
+  atomically $ catchSTM (Right <$> p c a) (return . Left)
 
 instance Contravariant (Push ctx) where
   contramap f (Push p) = Push $ \c -> p c . f
@@ -32,7 +33,6 @@ instance Decidable (Push ctx) where
 
 insert :: (b -> a) -> Push ctx a -> Push ctx b
 insert = contramap
-infixr 0 `insert`
 
 split :: (a -> (b, c)) -> Push ctx b -> Push ctx c -> Push ctx a
 split = divide
@@ -72,12 +72,20 @@ remove f = retain (not . f)
 contextualize :: (a -> ctx -> b) -> Push ctx b -> Push ctx a
 contextualize f (Push push) = Push $ \c a -> push c (f a c)
 
+fail :: Exception e => e -> Push ctx a
+fail = Push . const . const . throwSTM
+
+validate :: Exception e => (a -> Either e b) -> Push ctx b -> Push ctx a
+validate f (Push p) =  Push $ \c a -> case f a of
+  Left e -> throwSTM e
+  Right b -> p c b
+
 newtype Pull ctx a = Pull (ctx -> STM a)
 
-pull :: IO ctx -> Pull ctx a -> IO a
+pull :: Exception e => IO ctx -> Pull ctx a -> IO (Either e a)
 pull getContext (Pull p) = do
   c <- getContext
-  atomically $ p c
+  atomically $ catchSTM  (Right <$> p c) (return . Left)
 
 instance Functor (Pull ctx) where
   fmap f (Pull p) = Pull $ fmap f . p
@@ -122,6 +130,16 @@ contextualize' :: (a -> ctx -> b) -> Pull ctx a -> Pull ctx b
 contextualize' f (Pull p) = Pull $ \c -> do
   a <- p c
   return (f a c)
+
+fail' :: Exception e => e -> Pull ctx a
+fail' = Pull . const . throwSTM
+
+validate' :: Exception e => (a -> Either e b) -> Pull ctx a -> Pull ctx b
+validate' f (Pull p) =  Pull $ \c -> do
+  a <- p c
+  case f a of
+    Left e -> throwSTM e
+    Right b -> return b
 
 data Cell a b = Cell {
   writeCell :: forall ctx . Push ctx a,

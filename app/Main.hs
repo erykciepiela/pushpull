@@ -4,6 +4,7 @@ import PushPull
 import Control.Concurrent
 import Control.Monad
 import Data.Time
+import Control.Exception.Base
 
 -- foo :: Push Int
 -- foo = retain odd $ insert show $ forkN
@@ -28,12 +29,17 @@ data PushPullContext = PushPullContext {
 getPPContext :: IO PushPullContext
 getPPContext = PushPullContext <$> getCurrentTime <*> pure "anonymous user"
 
+data MyException = ThisException | ThatException deriving Show
+
+instance Exception MyException
+
 main :: IO ()
 main = do
   printToConsole <- mkPush putStrLn
   writeToFile <- mkPush $ writeFile "/tmp/foo"
-  let foo3 = contextualize (\a c -> (a, currentTime c, currentUser c)) $ insert show $ printToConsole
-  push getPPContext foo3 "hello"
+  let foo3 = validate (\s -> if length s > 4 then Right s else Left ThisException) $ contextualize (\a c -> (a, currentTime c, currentUser c)) $ insert show $ printToConsole
+  r <- push @MyException getPPContext foo3 "hello"
+  print r
   threadDelay 1000000
   -- cell <- PushPull.all
   -- forkIO $ forever $ do

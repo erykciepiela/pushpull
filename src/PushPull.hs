@@ -4,26 +4,36 @@ import Data.Functor.Contravariant
 import Data.Functor.Contravariant.Divisible
 import Data.Void
 import Data.IORef
+import Data.Time
 
-newtype Push a = Push (a -> IO ())
+data PushContext = PushContext {
+  pushTime :: UTCTime
+}
+
+getPushContext :: IO PushContext
+getPushContext = PushContext <$> getCurrentTime
+
+newtype Push a = Push (PushContext -> a -> IO ())
 
 push :: Push a -> a -> IO ()
-push (Push p) = p
+push (Push p) a = do
+  c <- getPushContext
+  p c a
 
 instance Contravariant Push where
-  contramap f (Push p) = Push $ p . f
+  contramap f (Push p) = Push $ \c -> p c . f
 
 instance Divisible Push where
-  divide f (Push p1) (Push p2) = Push $ \a -> let (b1, b2) = f a in do
-    p1 b1
-    p2 b2
-  conquer = Push $ const $ return ()
+  divide f (Push p1) (Push p2) = Push $ \c a -> let (b1, b2) = f a in do
+    p1 c b1
+    p2 c b2
+  conquer = Push $ const $ const $ return ()
 
 instance Decidable Push where
-  choose f (Push p1) (Push p2) = Push $ \a -> case f a of
-    Left b1 -> p1 b1
-    Right b2 -> p2 b2
-  lose f = Push $ absurd . f
+  choose f (Push p1) (Push p2) = Push $ \c a -> case f a of
+    Left b1 -> p1 c b1
+    Right b2 -> p2 c b2
+  lose f = Push $ const $ absurd . f
 
 insert :: (b -> a) -> Push a -> Push b
 insert = contramap
@@ -63,6 +73,9 @@ retain f p = routeIf f p void
 
 remove :: (a -> Bool) -> Push a -> Push a
 remove f = retain (not . f)
+
+contextualize :: (a -> PushContext -> b) -> Push b -> Push a
+contextualize f (Push push) = Push $ \c a -> push c (f a c)
 
 
 newtype Pull a = Pull (IO a)
@@ -105,9 +118,9 @@ zip p1 p2 = (,) <$> p1 <*> p2
 
 -- combining Push and Pull
 enrich :: Pull a -> Push (a, b) -> Push b
-enrich (Pull pull) (Push push) = Push $ \b -> do
+enrich (Pull pull) (Push push) = Push $ \c b -> do
   a <- pull
-  push (a, b)
+  push c (a, b)
 
 data Cell a b = Cell {
   writeCell :: Push a,
@@ -118,7 +131,7 @@ latest :: IO (Cell a (Maybe a))
 latest = do
   ref <- newIORef Nothing
   return $ Cell {
-    writeCell = Push $ writeIORef ref . Just,
+    writeCell = Push $ const $ writeIORef ref . Just,
     readCell = Pull $ readIORef ref
   }
 
@@ -126,7 +139,7 @@ all :: IO (Cell a [a])
 all = do
   ref <- newIORef []
   return $ Cell {
-    writeCell = Push $ modifyIORef' ref . (:),
+    writeCell = Push $ const $ modifyIORef' ref . (:),
     readCell = Pull $ readIORef ref
   }
 

@@ -6,10 +6,10 @@ import Control.Monad
 import Data.Time
 
 printToConsole :: Push String
-printToConsole = Push putStrLn
+printToConsole = Push $ const putStrLn
 
 writeToFile :: FilePath -> Push String
-writeToFile fp = Push $ writeFile fp
+writeToFile fp = Push $ const $ writeFile fp
 
 readFromConsole :: Pull String
 readFromConsole = Pull getLine
@@ -30,7 +30,7 @@ foo2 :: Push Int
 foo2 = retain odd $ insert show $ forkIf (\a -> length a > 9) (writeToFile "/tmp/foo") $ printToConsole
 
 foo3 :: Push String
-foo3 = enrich currentTime $ insert show $ printToConsole
+foo3 = contextualize (\a c -> (a, pushTime c)) $ insert show $ printToConsole
 
 main :: IO ()
 main = do

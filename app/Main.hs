@@ -20,12 +20,20 @@ import Data.Time
 -- foo3 :: Push String
 -- foo3 = contextualize (\a c -> (a, pushTime c)) $ insert show $ printToConsole
 
+data PushPullContext = PushPullContext {
+  currentTime :: UTCTime,
+  currentUser :: String
+}
+
+getPPContext :: IO PushPullContext
+getPPContext = PushPullContext <$> getCurrentTime <*> pure "anonymous user"
+
 main :: IO ()
 main = do
   printToConsole <- mkPush putStrLn
   writeToFile <- mkPush $ writeFile "/tmp/foo"
   let foo3 = contextualize (\a c -> (a, currentTime c, currentUser c)) $ insert show $ printToConsole
-  push foo3 "hello"
+  push getPPContext foo3 "hello"
   threadDelay 1000000
   -- cell <- PushPull.all
   -- forkIO $ forever $ do

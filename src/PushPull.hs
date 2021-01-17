@@ -10,132 +10,124 @@ import Control.Concurrent.STM
 import Control.Concurrent.STM.TBQueue
 import Control.Monad (forever)
 
-data PushPullContext = PushPullContext {
-  currentTime :: UTCTime,
-  currentUser :: String
-}
+newtype Push ctx a = Push (ctx -> a -> STM ())
 
-getPPContext :: IO PushPullContext
-getPPContext = PushPullContext <$> getCurrentTime <*> pure "anonymous user"
-
-newtype Push a = Push (PushPullContext -> a -> STM ())
-
-push :: Push a -> a -> IO ()
-push (Push p) a = do
-  c <- getPPContext
+push :: IO ctx -> Push ctx a -> a -> IO ()
+push getContext (Push p) a = do
+  c <- getContext
   atomically $ p c a
 
-instance Contravariant Push where
+instance Contravariant (Push ctx) where
   contramap f (Push p) = Push $ \c -> p c . f
 
-instance Divisible Push where
+instance Divisible (Push ctx) where
   divide f (Push p1) (Push p2) = Push $ \c a -> let (b1, b2) = f a in do
     p1 c b1
     p2 c b2
   conquer = Push $ const $ const $ return ()
 
-instance Decidable Push where
+instance Decidable (Push ctx) where
   choose f (Push p1) (Push p2) = Push $ \c a -> case f a of
     Left b1 -> p1 c b1
     Right b2 -> p2 c b2
   lose f = Push $ const $ absurd . f
 
-insert :: (b -> a) -> Push a -> Push b
+insert :: (b -> a) -> Push ctx a -> Push ctx b
 insert = contramap
 infixr 0 `insert`
 
-split :: (a -> (b, c)) -> Push b -> Push c -> Push a
+split :: (a -> (b, c)) -> Push ctx b -> Push ctx c -> Push ctx a
 split = divide
 
 -- identity for split: split f void p ~= p
-void :: Push a
+void :: Push ctx a
 void = conquer
 
-route :: (a -> Either b c) -> Push b -> Push c -> Push a
+route :: (a -> Either b c) -> Push ctx b -> Push ctx c -> Push ctx a
 route = choose
 
 -- identity to route: route f never p ~= p
-never :: Push Void
+never :: Push ctx Void
 never = lose id
 
-select :: (a -> Maybe b) -> Push b -> Push a
+select :: (a -> Maybe b) -> Push ctx b -> Push ctx a
 select f = choose (maybe (Left ()) Right . f) void
 
-fork :: Push a -> Push a -> Push a
+fork :: Push ctx a -> Push ctx a -> Push ctx a
 fork = split (\a -> (a, a))
 
-forkN :: [Push a] -> Push a
+forkN :: [Push ctx a] -> Push ctx a
 forkN = foldr fork void
 
-routeIf :: (a -> Bool) -> Push a -> Push a -> Push a
+routeIf :: (a -> Bool) -> Push ctx a -> Push ctx a -> Push ctx a
 routeIf f = route (\a -> (if f a then Left else Right) a)
 
-forkIf :: (a -> Bool) -> Push a -> Push a -> Push a
+forkIf :: (a -> Bool) -> Push ctx a -> Push ctx a -> Push ctx a
 forkIf f thenPush = split (\a -> (if f a then Just a else Nothing, a)) (select id thenPush)
 
-retain :: (a -> Bool) -> Push a -> Push a
+retain :: (a -> Bool) -> Push ctx a -> Push ctx a
 retain f p = routeIf f p void
 
-remove :: (a -> Bool) -> Push a -> Push a
+remove :: (a -> Bool) -> Push ctx a -> Push ctx a
 remove f = retain (not . f)
 
-contextualize :: (a -> PushPullContext -> b) -> Push b -> Push a
+contextualize :: (a -> ctx -> b) -> Push ctx b -> Push ctx a
 contextualize f (Push push) = Push $ \c a -> push c (f a c)
 
-newtype Pull a = Pull (PushPullContext -> STM a)
+newtype Pull ctx a = Pull (ctx -> STM a)
 
-pull :: Pull a -> IO a
-pull (Pull p) = do
-  c <- getPPContext
+pull :: IO ctx -> Pull ctx a -> IO a
+pull getContext (Pull p) = do
+  c <- getContext
   atomically $ p c
 
-instance Functor Pull where
+instance Functor (Pull ctx) where
   fmap f (Pull p) = Pull $ fmap f . p
 
-instance Applicative Pull where
+instance Applicative (Pull ctx) where
   pure = Pull . const . return
   Pull f <*> Pull a = Pull $ \c -> f c <*> a c
 
-instance Monad Pull where
+instance Monad (Pull ctx) where
   return = pure
   (Pull p) >>= f = Pull $ \c -> do
     (Pull io) <- f <$> p c
     io c
 
-extract :: (a -> b) -> Pull a -> Pull b
+extract :: (a -> b) -> Pull ctx a -> Pull ctx b
 extract = fmap
 
-combine :: (a -> b -> c) -> Pull a -> Pull b -> Pull c
+combine :: (a -> b -> c) -> Pull ctx a -> Pull ctx b -> Pull ctx c
 combine f (Pull p1) (Pull p2) = Pull $ \c -> f <$> p1 c <*> p2 c
 
 -- identity to combine: combine f nothing p ~= p
-nothing :: Pull ()
+nothing :: Pull ctx ()
 nothing = pure ()
 
-switch :: Pull a -> (a -> Pull b) -> Pull b -- 2
+switch :: Pull ctx a -> (a -> Pull ctx b) -> Pull ctx b -- 2
 switch = (>>=)
 
 -- identity to switch: p `switch` always = p
-always :: a -> Pull a
+always :: a -> Pull ctx a
 always = return
 
-zip :: Pull a -> Pull b -> Pull (a, b)
+zip :: Pull ctx a -> Pull ctx b -> Pull ctx (a, b)
 zip p1 p2 = (,) <$> p1 <*> p2
 
--- combining Push and Pull
-enrich :: Pull a -> Push (a, b) -> Push b
+-- combining Push ctx and Pull
+enrich :: Pull ctx a -> Push ctx (a, b) -> Push ctx b
 enrich (Pull pull) (Push push) = Push $ \c b -> do
   a <- pull c
   push c (a, b)
 
-contextualize' :: (a -> PushPullContext -> b) -> Pull a -> Pull b
+contextualize' :: (a -> ctx -> b) -> Pull ctx a -> Pull ctx b
 contextualize' f (Pull p) = Pull $ \c -> do
   a <- p c
   return (f a c)
 
 data Cell a b = Cell {
-  writeCell :: Push a,
-  readCell :: Pull b
+  writeCell :: forall ctx . Push ctx a,
+  readCell :: forall ctx . Pull ctx b
 }
 
 latest :: IO (Cell a (Maybe a))
@@ -159,7 +151,7 @@ all = atomically $ do
         v <- readTMVar var
         putTMVar var $ f v
 
-mkPush :: (a -> IO ()) -> IO (Push a)
+mkPush :: (a -> IO ()) -> IO (Push ctx a)
 mkPush io = do
     q <- newTBQueueIO 100
     forkIO $ forever $ do

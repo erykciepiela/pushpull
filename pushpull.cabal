@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 612ea5bccd3c52fd4874c81d41e267f79cdcac7fdea3d8fb192e81198ce9eb2e
+-- hash: 0269183972966c6e7f9a269ea4a933ff4034d37aaedacfa1eb5231f5be1c5370
 
 name:           pushpull
 version:        0.1.0.0
@@ -35,6 +35,7 @@ library
   build-depends:
       base >=4.7 && <5
     , contravariant
+    , stm
     , time
   default-language: Haskell2010
 
@@ -49,6 +50,7 @@ executable pushpull-exe
       base >=4.7 && <5
     , contravariant
     , pushpull
+    , stm
     , time
   default-language: Haskell2010
 
@@ -64,5 +66,6 @@ test-suite pushpull-test
       base >=4.7 && <5
     , contravariant
     , pushpull
+    , stm
     , time
   default-language: Haskell2010

@@ -5,6 +5,10 @@ import Data.Functor.Contravariant.Divisible
 import Data.Void
 import Data.IORef
 import Data.Time
+import Control.Concurrent
+import Control.Concurrent.STM
+import Control.Concurrent.STM.TBQueue
+import Control.Monad (forever)
 
 data PushContext = PushContext {
   pushTime :: UTCTime
@@ -13,12 +17,12 @@ data PushContext = PushContext {
 getPushContext :: IO PushContext
 getPushContext = PushContext <$> getCurrentTime
 
-newtype Push a = Push (PushContext -> a -> IO ())
+newtype Push a = Push (PushContext -> a -> STM ())
 
 push :: Push a -> a -> IO ()
 push (Push p) a = do
   c <- getPushContext
-  p c a
+  atomically $ p c a
 
 instance Contravariant Push where
   contramap f (Push p) = Push $ \c -> p c . f
@@ -78,10 +82,10 @@ contextualize :: (a -> PushContext -> b) -> Push b -> Push a
 contextualize f (Push push) = Push $ \c a -> push c (f a c)
 
 
-newtype Pull a = Pull (IO a)
+newtype Pull a = Pull (STM a)
 
 pull :: Pull a -> IO a
-pull (Pull p) = p
+pull (Pull p) = atomically p
 
 instance Functor Pull where
   fmap f (Pull p) = Pull $ fmap f p
@@ -128,18 +132,31 @@ data Cell a b = Cell {
 }
 
 latest :: IO (Cell a (Maybe a))
-latest = do
-  ref <- newIORef Nothing
+latest = atomically $ do
+  var <- newTMVar Nothing
   return $ Cell {
-    writeCell = Push $ const $ writeIORef ref . Just,
-    readCell = Pull $ readIORef ref
+    writeCell = Push $ const $ putTMVar var . Just,
+    readCell = Pull $ readTMVar var
   }
 
 all :: IO (Cell a [a])
-all = do
-  ref <- newIORef []
+all = atomically $ do
+  var <- newTMVar []
   return $ Cell {
-    writeCell = Push $ const $ modifyIORef' ref . (:),
-    readCell = Pull $ readIORef ref
+    writeCell = Push $ const $ modifyTMVar var . (:),
+    readCell = Pull $ readTMVar var
   }
+    where
+      modifyTMVar :: TMVar a -> (a -> a) -> STM ()
+      modifyTMVar var f = do
+        v <- readTMVar var
+        putTMVar var $ f v
+
+mkPush :: (a -> IO ()) -> IO (Push a)
+mkPush io = do
+    q <- newTBQueueIO 100
+    forkIO $ forever $ do
+      a <- atomically $ readTBQueue q
+      io a
+    return $ Push $ const $ writeTBQueue q
 

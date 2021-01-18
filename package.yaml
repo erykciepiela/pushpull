@@ -30,6 +30,7 @@ dependencies:
 - time
 - stm
 - profunctors
+- semigroupoids
 
 library:
   source-dirs: src

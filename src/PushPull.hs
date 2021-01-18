@@ -11,11 +11,6 @@ import Control.Exception.Base
 
 newtype Push ctx a = Push (ctx -> a -> STM ())
 
-push :: Exception e => IO ctx -> Push ctx a -> a -> IO (Either e ())
-push getContext (Push p) a = do
-  c <- getContext
-  atomically $ catchSTM (Right <$> p c a) (return . Left)
-
 instance Contravariant (Push ctx) where
   contramap f (Push p) = Push $ \c -> p c . f
 
@@ -30,6 +25,26 @@ instance Decidable (Push ctx) where
     Left b1 -> p1 c b1
     Right b2 -> p2 c b2
   lose f = Push $ const $ absurd . f
+
+newtype Pull ctx a = Pull (ctx -> STM a)
+
+instance Functor (Pull ctx) where
+  fmap f (Pull p) = Pull $ fmap f . p
+
+instance Applicative (Pull ctx) where
+  pure = Pull . const . return
+  Pull f <*> Pull a = Pull $ \c -> f c <*> a c
+
+instance Monad (Pull ctx) where
+  return = pure
+  (Pull p) >>= f = Pull $ \c -> do
+    (Pull io) <- f <$> p c
+    io c
+
+data Cell ctx a b = Cell {
+  writeCell :: Push ctx a,
+  readCell :: Pull ctx b
+}
 
 insert :: (b -> a) -> Push ctx a -> Push ctx b
 insert = contramap
@@ -80,26 +95,6 @@ validate f (Push p) =  Push $ \c a -> case f a of
   Left e -> throwSTM e
   Right b -> p c b
 
-newtype Pull ctx a = Pull (ctx -> STM a)
-
-pull :: Exception e => IO ctx -> Pull ctx a -> IO (Either e a)
-pull getContext (Pull p) = do
-  c <- getContext
-  atomically $ catchSTM  (Right <$> p c) (return . Left)
-
-instance Functor (Pull ctx) where
-  fmap f (Pull p) = Pull $ fmap f . p
-
-instance Applicative (Pull ctx) where
-  pure = Pull . const . return
-  Pull f <*> Pull a = Pull $ \c -> f c <*> a c
-
-instance Monad (Pull ctx) where
-  return = pure
-  (Pull p) >>= f = Pull $ \c -> do
-    (Pull io) <- f <$> p c
-    io c
-
 extract :: (a -> b) -> Pull ctx a -> Pull ctx b
 extract = fmap
 
@@ -120,7 +115,6 @@ always = return
 zip :: Pull ctx a -> Pull ctx b -> Pull ctx (a, b)
 zip p1 p2 = (,) <$> p1 <*> p2
 
--- combining Push ctx and Pull
 enrich :: Pull ctx a -> Push ctx (a, b) -> Push ctx b
 enrich (Pull pull) (Push push) = Push $ \c b -> do
   a <- pull c
@@ -141,12 +135,8 @@ validate' f (Pull p) =  Pull $ \c -> do
     Left e -> throwSTM e
     Right b -> return b
 
-data Cell a b = Cell {
-  writeCell :: forall ctx . Push ctx a,
-  readCell :: forall ctx . Pull ctx b
-}
 
-latest :: IO (Cell a (Maybe a))
+latest :: IO (Cell ctx a (Maybe a))
 latest = atomically $ do
   var <- newTMVar Nothing
   return $ Cell {
@@ -154,7 +144,7 @@ latest = atomically $ do
     readCell = Pull $ const $ readTMVar var
   }
 
-all :: IO (Cell a [a])
+all :: IO (Cell ctx a [a])
 all = atomically $ do
   var <- newTMVar []
   return $ Cell {
@@ -167,11 +157,23 @@ all = atomically $ do
         v <- readTMVar var
         putTMVar var $ f v
 
-mkPush :: (a -> IO ()) -> IO (Push ctx a)
-mkPush io = do
-    q <- newTBQueueIO 100
+
+-- Runtime
+
+mkPush :: Int -> (a -> IO ()) -> IO (Push ctx a)
+mkPush queueSize io = do
+    q <- newTBQueueIO (fromIntegral queueSize)
     forkIO $ forever $ do
       a <- atomically $ readTBQueue q
       io a
     return $ Push $ const $ writeTBQueue q
 
+push :: Exception e => IO ctx -> Push ctx a -> a -> IO (Either e ())
+push getContext (Push p) a = do
+  c <- getContext
+  atomically $ catchSTM (Right <$> p c a) (return . Left)
+
+pull :: Exception e => IO ctx -> Pull ctx a -> IO (Either e a)
+pull getContext (Pull p) = do
+  c <- getContext
+  atomically $ catchSTM  (Right <$> p c) (return . Left)

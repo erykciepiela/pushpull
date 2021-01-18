@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 0b3dc03667f8f80fed6320e7c357679c642a3c74519cc1f139dbcaccf23f9292
+-- hash: a571de6cfa22a6d4bbecca6ef4f5c443e959a6f35d533d1f132b21d975232956
 
 name:           pushpull
 version:        0.1.0.0
@@ -32,7 +32,7 @@ library
       Paths_pushpull
   hs-source-dirs:
       src
-  default-extensions: RankNTypes TypeApplications
+  default-extensions: RankNTypes TypeApplications DeriveAnyClass
   build-depends:
       base >=4.7 && <5
     , contravariant
@@ -46,7 +46,7 @@ executable pushpull-exe
       Paths_pushpull
   hs-source-dirs:
       app
-  default-extensions: RankNTypes TypeApplications
+  default-extensions: RankNTypes TypeApplications DeriveAnyClass
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
@@ -63,7 +63,7 @@ test-suite pushpull-test
       Paths_pushpull
   hs-source-dirs:
       test
-  default-extensions: RankNTypes TypeApplications
+  default-extensions: RankNTypes TypeApplications DeriveAnyClass
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5

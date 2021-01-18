@@ -22,6 +22,7 @@ description:         Please see the README on GitHub at <https://github.com/gith
 default-extensions:
 - RankNTypes
 - TypeApplications
+- DeriveAnyClass
 
 dependencies:
 - base >= 4.7 && < 5

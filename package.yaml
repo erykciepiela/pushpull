@@ -29,6 +29,7 @@ dependencies:
 - contravariant
 - time
 - stm
+- profunctors
 
 library:
   source-dirs: src

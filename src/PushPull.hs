@@ -3,6 +3,7 @@ module PushPull where
 import Data.Functor.Contravariant
 import Data.Functor.Contravariant.Divisible
 import Data.Void
+import Data.Profunctor
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TBQueue
@@ -42,9 +43,15 @@ instance Monad (Pull ctx) where
     io c
 
 data Cell ctx a b = Cell {
-  writeCell :: Push ctx a,
-  readCell :: Pull ctx b
+  pushCell :: Push ctx a,
+  pullCell :: Pull ctx b
 }
+
+instance Profunctor (Cell ctx) where
+  rmap f (Cell w r) = Cell w (fmap f r)
+  lmap f (Cell w r) = Cell (contramap f w) r
+
+-- Cell is not a Category (lack of id :: Cell ctx a a) => Cell is not an Arrow
 
 insert :: (b -> a) -> Push ctx a -> Push ctx b
 insert = contramap
@@ -140,16 +147,16 @@ latest :: IO (Cell ctx a (Maybe a))
 latest = atomically $ do
   var <- newTMVar Nothing
   return $ Cell {
-    writeCell = Push $ const $ putTMVar var . Just,
-    readCell = Pull $ const $ readTMVar var
+    pushCell = Push $ const $ putTMVar var . Just,
+    pullCell = Pull $ const $ readTMVar var
   }
 
 all :: IO (Cell ctx a [a])
 all = atomically $ do
   var <- newTMVar []
   return $ Cell {
-    writeCell = Push $ const $ modifyTMVar var . (:),
-    readCell = Pull $ const $ readTMVar var
+    pushCell = Push $ const $ modifyTMVar var . (:),
+    pullCell = Pull $ const $ readTMVar var
   }
     where
       modifyTMVar :: TMVar a -> (a -> a) -> STM ()

@@ -44,6 +44,12 @@ data Cell ctx a b = Cell {
   pullCell :: Pull ctx b
 }
 
+data C ctx a b = forall s . C {
+  init :: s,
+  write :: ctx -> a -> s -> s,
+  read :: ctx -> s -> b
+}
+
 instance Profunctor (Cell ctx) where
   rmap f (Cell w r) = Cell w (fmap f r)
   lmap f (Cell w r) = Cell (contramap f w) r

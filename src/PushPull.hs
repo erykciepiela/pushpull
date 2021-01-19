@@ -49,6 +49,8 @@ data C ctx a b = forall s . C {
   write :: ctx -> a -> s -> s,
   read :: ctx -> s -> b
 }
+-- Functor, Applicative, Monad
+
 
 instance Profunctor (Cell ctx) where
   rmap f (Cell w r) = Cell w (fmap f r)

@@ -1,5 +1,5 @@
 module PushPull where
-import Prelude hiding (read)
+import Prelude hiding (read, (.), id)
 
 import Data.Semigroupoid
 import Data.Functor.Contravariant
@@ -9,8 +9,10 @@ import Data.Profunctor
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TBQueue
-import Control.Monad (forever)
 import Control.Exception.Base
+import Control.Category
+import Control.Monad
+import Control.Arrow
 
 newtype Push ctx a = Push (ctx -> a -> STM ())
 
@@ -27,8 +29,20 @@ instance Decidable (Push ctx) where
 
 newtype Pull ctx a = Pull (ctx -> STM a)
 
+instance Category Pull where
+  id = Pull return
+  Pull pull2 . Pull pull1 = Pull $ pull1 >=> pull2
+
+instance Profunctor Pull where
+  rmap f (Pull pull) = Pull $ fmap f <$> pull
+  lmap f (Pull pull) = Pull $ pull . f
+
+instance Arrow Pull where
+  arr f = Pull $ return . f
+  first (Pull pull) = Pull $ \(c, d) -> (,) <$> pull c <*> pure d
+
 instance Functor (Pull ctx) where
-  fmap f (Pull p) = Pull $ fmap f . p
+  fmap = rmap
 
 instance Applicative (Pull ctx) where
   pure = Pull . const . return
@@ -90,33 +104,38 @@ instance Monad (Cell ctx a) where
 
 -- Synonyms in FRP vocabulary
 
--- TODO: smell, cannot find proper name other than "map", but Pull's extract could take name "map" too
+-- Push constructing, using imperative names - verbs
+
+-- basic
+
 map :: (b -> a) -> Push ctx a -> Push ctx b
 map = contramap
 
 split :: (a -> (b, c)) -> Push ctx b -> Push ctx c -> Push ctx a
 split = divide
 
--- identity for split: split f void p ~= p
-void :: Push ctx a
-void = conquer
+-- identity for split: split f ignore p ~= p
+ignore :: Push ctx a
+ignore = conquer
 
 route :: (a -> Either b c) -> Push ctx b -> Push ctx c -> Push ctx a
 route = choose
 
--- identity to route: route f never p ~= p
-never :: Push ctx Void
-never = lose id
+-- identity to route: route f unreach p ~= p
+unreach :: Push ctx Void
+unreach = lose id
+
+-- shortcuts
 
 -- TODO: smell, cannot find proper name
 select :: (a -> Maybe b) -> Push ctx b -> Push ctx a
-select f = choose (maybe (Left ()) Right . f) void
+select f = route (maybe (Left ()) Right . f) ignore
 
 fork :: Push ctx a -> Push ctx a -> Push ctx a
 fork = split (\a -> (a, a))
 
 forkN :: [Push ctx a] -> Push ctx a
-forkN = foldr fork void
+forkN = foldr fork ignore
 
 routeIf :: (a -> Bool) -> Push ctx a -> Push ctx a -> Push ctx a
 routeIf f = route (\a -> (if f a then Left else Right) a)
@@ -126,10 +145,15 @@ forkIf :: (a -> Bool) -> Push ctx a -> Push ctx a -> Push ctx a
 forkIf f thenPush = split (\a -> (if f a then Just a else Nothing, a)) (select id thenPush)
 
 retain :: (a -> Bool) -> Push ctx a -> Push ctx a
-retain f p = routeIf f p void
+retain f p = routeIf f p ignore
 
 remove :: (a -> Bool) -> Push ctx a -> Push ctx a
 remove f = retain (not . f)
+
+enrich :: Pull ctx b -> (a -> b -> c) -> Push ctx c -> Push ctx a
+enrich (Pull pull) f (Push push) = Push $ \c a -> do
+  b <- pull c
+  push c $ f a b
 
 fail :: Exception e => e -> Push ctx a
 fail = Push . const . const . throwSTM
@@ -139,31 +163,32 @@ validate f (Push p) =  Push $ \c a -> case f a of
   Left e -> throwSTM e
   Right b -> p c b
 
+-- Pull constructing, using declarative names: nouns
+
+-- basic
+
 -- TODO: smell, the same as in Push's map
 extract :: (a -> b) -> Pull ctx a -> Pull ctx b
 extract = fmap
 
-combine :: (a -> b -> c) -> Pull ctx a -> Pull ctx b -> Pull ctx c
-combine f (Pull p1) (Pull p2) = Pull $ \c -> f <$> p1 c <*> p2 c
+combination :: (a -> b -> c) -> Pull ctx a -> Pull ctx b -> Pull ctx c
+combination f (Pull p1) (Pull p2) = Pull $ \c -> f <$> p1 c <*> p2 c
 
--- identity to combine: combine f nothing p ~= p
+-- identity to combination: combination f nothing p ~= p
 nothing :: Pull ctx ()
 nothing = pure ()
 
-switch :: Pull ctx a -> (a -> Pull ctx b) -> Pull ctx b -- 2
-switch = (>>=)
+selection :: Pull ctx a -> (a -> Pull ctx b) -> Pull ctx b -- 2
+selection = (>>=)
 
--- identity to switch: p `switch` always = p
+-- identity to selection: p `selection` always = p
 always :: a -> Pull ctx a
 always = return
 
+-- shortcuts
+
 context :: Pull ctx ctx
 context = Pull return
-
-enrich :: Pull ctx b -> (a -> b -> c) -> Push ctx c -> Push ctx a
-enrich (Pull pull) f (Push push) = Push $ \c a -> do
-  b <- pull c
-  push c $ f a b
 
 fail' :: Exception e => e -> Pull ctx a
 fail' = Pull . const . throwSTM
@@ -174,6 +199,8 @@ validate' f (Pull p) =  Pull $ \c -> do
   case f a of
     Left e -> throwSTM e
     Right b -> return b
+
+-- Cell constructing
 
 latest :: IO (Cell ctx a (Maybe a))
 latest = atomically $ do

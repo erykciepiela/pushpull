@@ -1,4 +1,5 @@
 module PushPull where
+import Prelude hiding (read)
 
 import Data.Semigroupoid
 import Data.Functor.Contravariant
@@ -40,8 +41,8 @@ instance Monad (Pull ctx) where
     pull2 c
 
 data Cell ctx a b = Cell {
-  pushCell :: Push ctx a,
-  pullCell :: Pull ctx b
+  write :: Push ctx a,
+  read :: Pull ctx b
 }
 
 instance Profunctor (Cell ctx) where
@@ -89,6 +90,7 @@ instance Monad (Cell ctx a) where
 
 -- Synonyms in FRP vocabulary
 
+-- TODO: smell, cannot find proper name other than "map", but Pull's extract could take name "map" too
 insert :: (b -> a) -> Push ctx a -> Push ctx b
 insert = contramap
 
@@ -106,6 +108,7 @@ route = choose
 never :: Push ctx Void
 never = lose id
 
+-- TODO: smell, cannot find proper name
 select :: (a -> Maybe b) -> Push ctx b -> Push ctx a
 select f = choose (maybe (Left ()) Right . f) void
 
@@ -118,6 +121,7 @@ forkN = foldr fork void
 routeIf :: (a -> Bool) -> Push ctx a -> Push ctx a -> Push ctx a
 routeIf f = route (\a -> (if f a then Left else Right) a)
 
+-- should rely on fork not on split, as name suggests
 forkIf :: (a -> Bool) -> Push ctx a -> Push ctx a -> Push ctx a
 forkIf f thenPush = split (\a -> (if f a then Just a else Nothing, a)) (select id thenPush)
 
@@ -127,9 +131,6 @@ retain f p = routeIf f p void
 remove :: (a -> Bool) -> Push ctx a -> Push ctx a
 remove f = retain (not . f)
 
-contextualize :: (a -> ctx -> b) -> Push ctx b -> Push ctx a
-contextualize f (Push push) = Push $ \c a -> push c (f a c)
-
 fail :: Exception e => e -> Push ctx a
 fail = Push . const . const . throwSTM
 
@@ -138,6 +139,7 @@ validate f (Push p) =  Push $ \c a -> case f a of
   Left e -> throwSTM e
   Right b -> p c b
 
+-- TODO: smell, the same as in Push's insert
 extract :: (a -> b) -> Pull ctx a -> Pull ctx b
 extract = fmap
 
@@ -155,18 +157,13 @@ switch = (>>=)
 always :: a -> Pull ctx a
 always = return
 
-zip :: Pull ctx a -> Pull ctx b -> Pull ctx (a, b)
-zip p1 p2 = (,) <$> p1 <*> p2
+context :: Pull ctx ctx
+context = Pull return
 
-enrich :: Pull ctx a -> Push ctx (a, b) -> Push ctx b
-enrich (Pull pull) (Push push) = Push $ \c b -> do
-  a <- pull c
-  push c (a, b)
-
-contextualize' :: (a -> ctx -> b) -> Pull ctx a -> Pull ctx b
-contextualize' f (Pull p) = Pull $ \c -> do
-  a <- p c
-  return (f a c)
+enrich :: Pull ctx b -> (a -> b -> c) -> Push ctx c -> Push ctx a
+enrich (Pull pull) f (Push push) = Push $ \c a -> do
+  b <- pull c
+  push c $ f a b
 
 fail' :: Exception e => e -> Pull ctx a
 fail' = Pull . const . throwSTM
@@ -178,59 +175,32 @@ validate' f (Pull p) =  Pull $ \c -> do
     Left e -> throwSTM e
     Right b -> return b
 
-
 latest :: IO (Cell ctx a (Maybe a))
 latest = atomically $ do
   var <- newTMVar Nothing
   return $ Cell {
-    pushCell = Push $ const $ putTMVar var . Just,
-    pullCell = Pull $ const $ readTMVar var
+    write = Push $ const $ putTMVar var . Just,
+    read = Pull $ const $ readTMVar var
   }
 
 previous :: IO (Cell ctx a (Maybe a))
 previous = atomically $ do
   var <- newTMVar (Nothing, Nothing)
   return $ Cell {
-    pushCell = Push $ const $ \a -> modifyTMVar var (\(latest, previous) -> (Just a, latest)),
-    pullCell = Pull $ const $ snd <$> readTMVar var
+    write = Push $ const $ \a -> modifyTMVar var (\(latest, previous) -> (Just a, latest)),
+    read = Pull $ const $ snd <$> readTMVar var
   }
 
 all :: IO (Cell ctx a [a])
 all = atomically $ do
   var <- newTMVar []
   return $ Cell {
-    pushCell = Push $ const $ modifyTMVar var . (:),
-    pullCell = Pull $ const $ readTMVar var
+    write = Push $ const $ modifyTMVar var . (:),
+    read = Pull $ const $ readTMVar var
   }
-
--- x :: IO (Cell ctx1 a1 (Maybe a1), Cell ctx2 a2 (Maybe a2), Cell ctx3 a3 [a3])
--- x :: IO (Cell ctx a (Maybe a1, Maybe a2, [a]))
--- x = do
---   return $ (,,) <$> latest <*> previous <*> PushPull.all
 
 -- utility
 modifyTMVar :: TMVar a -> (a -> a) -> STM ()
 modifyTMVar var f = do
   v <- readTMVar var
   putTMVar var $ f v
-
-
--- Runtime
-
-mkPush :: Int -> (a -> IO ()) -> IO (Push ctx a)
-mkPush queueSize consume = do
-    q <- newTBQueueIO (fromIntegral queueSize)
-    forkIO $ forever $ do
-      a <- atomically $ readTBQueue q
-      consume a
-    return $ Push $ const $ writeTBQueue q
-
-push :: Exception e => IO ctx -> Push ctx a -> a -> IO (Either e ())
-push getContext (Push p) a = do
-  c <- getContext
-  atomically $ catchSTM (Right <$> p c a) (return . Left)
-
-pull :: Exception e => IO ctx -> Pull ctx a -> IO (Either e a)
-pull getContext (Pull p) = do
-  c <- getContext
-  atomically $ catchSTM  (Right <$> p c) (return . Left)

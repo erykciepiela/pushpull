@@ -91,8 +91,8 @@ instance Monad (Cell ctx a) where
 -- Synonyms in FRP vocabulary
 
 -- TODO: smell, cannot find proper name other than "map", but Pull's extract could take name "map" too
-insert :: (b -> a) -> Push ctx a -> Push ctx b
-insert = contramap
+map :: (b -> a) -> Push ctx a -> Push ctx b
+map = contramap
 
 split :: (a -> (b, c)) -> Push ctx b -> Push ctx c -> Push ctx a
 split = divide
@@ -139,7 +139,7 @@ validate f (Push p) =  Push $ \c a -> case f a of
   Left e -> throwSTM e
   Right b -> p c b
 
--- TODO: smell, the same as in Push's insert
+-- TODO: smell, the same as in Push's map
 extract :: (a -> b) -> Pull ctx a -> Pull ctx b
 extract = fmap
 

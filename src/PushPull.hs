@@ -181,20 +181,33 @@ nothing = pure ()
 selection :: Pull ctx a -> (a -> Pull ctx b) -> Pull ctx b -- 2
 selection = (>>=)
 
--- identity to selection: p `selection` always = p
-always :: a -> Pull ctx a
-always = return
+-- identity to selection: p `selection` constant = p
+constant :: a -> Pull ctx a
+constant = return
+
+context :: Pull ctx ctx
+context = id
+
+-- TODO name?
+foo :: Pull ctx ctx' -> Pull ctx' a -> Pull ctx a
+foo = (>>>)
+
+-- TODO name?
+bar :: (ctx -> a) -> Pull ctx a
+bar = arr
+
+-- TODO name?
+scoped :: Pull ctx a -> Pull (ctx, d) (a, d)
+scoped = first
 
 -- shortcuts
 
-context :: Pull ctx ctx
-context = Pull return
+failure :: Exception e => e -> Pull ctx a
+failure = Pull . const . throwSTM
 
-fail' :: Exception e => e -> Pull ctx a
-fail' = Pull . const . throwSTM
-
-validate' :: Exception e => (a -> Either e b) -> Pull ctx a -> Pull ctx b
-validate' f (Pull p) =  Pull $ \c -> do
+-- TODO name?
+valid :: Exception e => (a -> Either e b) -> Pull ctx a -> Pull ctx b
+valid f (Pull p) =  Pull $ \c -> do
   a <- p c
   case f a of
     Left e -> throwSTM e

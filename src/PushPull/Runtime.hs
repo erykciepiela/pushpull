@@ -1,13 +1,11 @@
 module PushPull.Runtime where
 
-import PushPull
+import Prelude hiding (id, (.))
 
-import Control.Exception.Base
-import Control.Monad.STM
-import Control.Concurrent.STM.TBQueue
+import PushPull.Model
+
 import Control.Concurrent
 import Control.Monad
-import Control.Concurrent.STM.TMVar
 
 -- I/O
 
@@ -29,6 +27,7 @@ pullIn periodMilliseconds producer = do
     atomically $ putTMVar var a
   return $ Pull $ const $ readTMVar var
 
+--
 
 pushIn :: Exception e => IO ctx -> Push ctx a -> a -> IO (Either e ())
 pushIn getContext (Push p) a = do

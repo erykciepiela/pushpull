@@ -6,7 +6,6 @@ import PushPull
 import PushPull.Runtime
 
 import Control.Concurrent
-import Control.Monad
 import Data.Time
 import Control.Exception.Base
 

@@ -174,16 +174,13 @@ extract = fmap
 combination :: (a -> b -> c) -> Pull ctx a -> Pull ctx b -> Pull ctx c
 combination f (Pull p1) (Pull p2) = Pull $ \c -> f <$> p1 c <*> p2 c
 
--- identity to combination: combination f nothing p ~= p
-nothing :: Pull ctx ()
-nothing = pure ()
-
-selection :: Pull ctx a -> (a -> Pull ctx b) -> Pull ctx b -- 2
-selection = (>>=)
-
+-- identity to combination: combination f constant p ~= p
 -- identity to selection: p `selection` constant = p
 constant :: a -> Pull ctx a
 constant = return
+
+selection :: Pull ctx a -> (a -> Pull ctx b) -> Pull ctx b -- 2
+selection = (>>=)
 
 context :: Pull ctx ctx
 context = id
@@ -227,8 +224,16 @@ previous :: IO (Cell ctx a (Maybe a))
 previous = atomically $ do
   var <- newTMVar (Nothing, Nothing)
   return $ Cell {
-    write = Push $ const $ \a -> modifyTMVar var (\(latest, previous) -> (Just a, latest)),
+    write = Push $ const $ \a -> modifyTMVar var (\(latest, _) -> (Just a, latest)),
     read = Pull $ const $ snd <$> readTMVar var
+  }
+
+count :: IO (Cell ctx a Int)
+count = atomically $ do
+  var <- newTMVar 0
+  return $ Cell {
+    write = Push $ const $ \a -> modifyTMVar var (+ 1),
+    read = Pull $ const $ readTMVar var
   }
 
 all :: IO (Cell ctx a [a])

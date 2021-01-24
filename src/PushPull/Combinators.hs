@@ -1,5 +1,7 @@
 module PushPull.Combinators where
 
+import Prelude hiding (id, (.))
+import PushPull.Model
 import PushPull.Primitives
 
 -- TODO: smell, cannot find proper name

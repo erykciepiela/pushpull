@@ -2,7 +2,7 @@ module Main where
 
 import Prelude hiding (map)
 
-import PushPull
+import PushPull.Business
 import PushPull.Runtime
 
 import Control.Concurrent
@@ -16,10 +16,10 @@ data MyContext = MyContext {
 
 data MyException = MyException deriving (Show, Exception)
 
-type Application i o = i -> o
+type Business i o = i -> o
 
-app :: Application (Push MyContext String, Push MyContext String, Pull MyContext String) (Push MyContext String, Pull MyContext (Int, MyContext))
-app (printToConsole, printToFile, readFromFile) = let
+business :: Business (Push MyContext String, Push MyContext String, Pull MyContext String) (Push MyContext String, Pull MyContext (Int, MyContext))
+business (printToConsole, printToFile, readFromFile) = let
   pushWord = validate (\s -> if length s > 4 then Right s else Left MyException) $ enrich context (\a c -> (a, currentTime c, currentUser c)) $ map show printToConsole
   pullAge = (,) <$> (length <$> readFromFile) <*> context
   in (pushWord, pullAge)
@@ -32,7 +32,7 @@ main = do
   readFromFile <- pullIn 1000 $ readFile "/tmp/in"
 
   -- application business
-  let (pushWord, pullAge) = app (printToConsole, printToFile, readFromFile)
+  let (pushWord, pullAge) = business (printToConsole, printToFile, readFromFile)
 
   -- rutime
   pushIn @MyException (MyContext <$> getCurrentTime <*> pure "alice") pushWord "hello"

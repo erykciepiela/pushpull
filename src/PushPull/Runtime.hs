@@ -3,7 +3,6 @@ module PushPull.Runtime where
 import Prelude hiding (id, (.))
 
 import PushPull.Model
-
 import Control.Concurrent
 import Control.Monad
 

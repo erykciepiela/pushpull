@@ -37,6 +37,12 @@ instance Decidable (Push ctx) where
   choose f (Push p1) (Push p2) = Push $ \c -> either (p1 c) (p2 c) . f
   lose f = Push $ const $ absurd . f
 
+instance Semigroup (Push ctx a) where
+  p1 <> p2 = divide (\a -> (a, a)) p1 p2
+
+instance Monoid (Push ctx a) where
+  mempty = conquer
+
 newtype Pull ctx a = Pull (ctx -> STM a)
 
 instance Category Pull where

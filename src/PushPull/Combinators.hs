@@ -9,10 +9,10 @@ select :: (a -> Maybe b) -> Push ctx b -> Push ctx a
 select f = route (maybe (Left ()) Right . f) ignore
 
 fork :: Push ctx a -> Push ctx a -> Push ctx a
-fork = split (\a -> (a, a))
+fork = mappend
 
 forkN :: [Push ctx a] -> Push ctx a
-forkN = foldr fork ignore
+forkN = mconcat
 
 routeIf :: (a -> Bool) -> Push ctx a -> Push ctx a -> Push ctx a
 routeIf f = route (\a -> (if f a then Left else Right) a)

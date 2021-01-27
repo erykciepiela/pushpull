@@ -26,14 +26,14 @@ pullIn periodMilliseconds producer = do
     atomically $ putTMVar var a
   return $ Pull $ const $ readTMVar var
 
---
+-- Presentation
 
-pushIn :: Exception e => IO ctx -> Push ctx a -> a -> IO (Either e ())
-pushIn getContext (Push p) a = do
+push :: Exception e => IO ctx -> Push ctx a -> a -> IO (Either e ())
+push getContext (Push p) a = do
   c <- getContext
   atomically $ catchSTM (Right <$> p c a) (return . Left)
 
-pullOut :: Exception e => IO ctx -> Pull ctx a -> IO (Either e a)
-pullOut getContext (Pull p) = do
+pull :: Exception e => IO ctx -> Pull ctx a -> IO (Either e a)
+pull getContext (Pull p) = do
   c <- getContext
   atomically $ catchSTM  (Right <$> p c) (return . Left)

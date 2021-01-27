@@ -35,8 +35,8 @@ main' = do
   let (pushWord, pullAge) = business (printToConsole, printToFile, readFromFile)
 
   -- rutime
-  pushIn @MyException (MyContext <$> getCurrentTime <*> pure "alice") pushWord "hello"
-  pullOut @MyException (MyContext <$> getCurrentTime <*> pure "bob") pullAge >>= print
+  push @MyException (MyContext <$> getCurrentTime <*> pure "alice") pushWord "hello"
+  pull @MyException (MyContext <$> getCurrentTime <*> pure "bob") pullAge >>= print
   threadDelay 1000000
 
 main :: IO ()

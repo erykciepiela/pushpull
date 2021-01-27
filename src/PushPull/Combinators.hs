@@ -1,6 +1,6 @@
 module PushPull.Combinators where
 
-import Prelude hiding (id, (.))
+import Prelude hiding (id, (.), map)
 import PushPull.Model
 import PushPull.Primitives
 
@@ -27,3 +27,5 @@ retain f p = routeIf f p ignore
 remove :: (a -> Bool) -> Push ctx a -> Push ctx a
 remove f = retain (not . f)
 
+replace :: a -> Push ctx a -> Push ctx b
+replace a = map (const a)

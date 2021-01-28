@@ -104,4 +104,4 @@ All in all, the proposed approach will let us contain all business logic in FRP 
 # Call to action
 
   * introduce combinators for push FRP to Specular
-  * retrofit parts that
+  * retrofit code parts to exploit push FRP

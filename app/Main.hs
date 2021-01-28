@@ -27,9 +27,9 @@ business (printToConsole, printToFile, readFromFile) = let
 main' :: IO ()
 main' = do
   -- I/O
-  printToConsole <- pushOut 100 putStrLn
-  printToFile <- pushOut 100 $ writeFile "/tmp/out"
-  readFromFile <- pullIn 1000 $ readFile "/tmp/in"
+  printToConsole <- output 100 putStrLn
+  printToFile <- output 100 $ writeFile "/tmp/out"
+  readFromFile <- input 1000 $ readFile "/tmp/in"
 
   -- business
   let (pushWord, pullAge) = business (printToConsole, printToFile, readFromFile)

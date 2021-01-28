@@ -8,16 +8,16 @@ import Control.Monad
 
 -- I/O
 
-pushOut :: Int -> (a -> IO ()) -> IO (Push ctx a)
-pushOut queueSize consume = do
+output :: Int -> (a -> IO ()) -> IO (Push ctx a)
+output queueSize consume = do
   q <- newTBQueueIO (fromIntegral queueSize)
   forkIO $ forever $ do
     a <- atomically $ readTBQueue q
     consume a
   return $ Push $ const $ writeTBQueue q
 
-pullIn :: Int -> IO a -> IO (Pull ctx a)
-pullIn periodMilliseconds producer = do
+input :: Int -> IO a -> IO (Pull ctx a)
+input periodMilliseconds producer = do
   a <- producer
   var <- newTMVarIO a
   forkIO $ forever $ do

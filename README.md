@@ -34,7 +34,7 @@ The problem with imperative code as above is that the effects of an event can be
 
 Imperative code (as used in this context) vs FRP is false contrary.
 
-(The essence of FRP is to specify the dynamic behavior of a value completely at the time of declaration)[https://apfelmus.nfshost.com/blog/2011/03/28-essence-frp.html], where dynamic behaviour can be effectful imperative code.
+[The essence of FRP is to specify the dynamic behavior of a value completely at the time of declaration](https://apfelmus.nfshost.com/blog/2011/03/28-essence-frp.html), where dynamic behaviour can be effectful imperative code.
 So we should be able to specify imperative behaviour completely at the time of declaration.
 
 The following code would still be FRP even though it contains imperative specification of clear behaviour:

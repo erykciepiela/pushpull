@@ -3,8 +3,6 @@ module Main where
 import Prelude hiding (map, read)
 
 import PushPull.Business
-import PushPull.Runtime
-
 import Control.Concurrent
 import Data.Time
 import Control.Exception.Base

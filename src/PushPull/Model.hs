@@ -1,5 +1,18 @@
 module PushPull.Model
-  ( module PushPull.Model
+  ( Push
+  , Pull
+  , pushIn
+  , pushOut
+  , pullIn
+  , pullOut
+  , read
+  , write
+  , enrich
+  , latest
+  , previous
+  , all
+  , PushPull.Model.fail
+  , failure
   , module Data.Void
   , module Control.Exception.Base
   , module Control.Concurrent.STM
@@ -9,7 +22,7 @@ module PushPull.Model
   , module Data.Functor.Contravariant.Divisible
   ) where
 
-import Prelude hiding (read, (.), id)
+import Prelude hiding (read, (.), id, all)
 
 import Data.Semigroupoid
 import Data.Functor.Contravariant
@@ -23,6 +36,9 @@ import Control.Exception.Base
 import Control.Category
 import Control.Monad
 import Control.Arrow
+import PushPull.STMExtras
+
+-- Push
 
 newtype Push ctx a = Push (ctx -> a -> STM ())
 
@@ -42,6 +58,8 @@ instance Semigroup (Push ctx a) where
 
 instance Monoid (Push ctx a) where
   mempty = conquer
+
+-- Pull
 
 newtype Pull ctx a = Pull (ctx -> STM a)
 
@@ -69,6 +87,8 @@ instance Monad (Pull ctx) where
   (Pull pull1) >>= f = Pull $ \c -> do
     Pull pull2 <- f <$> pull1 c
     pull2 c
+
+-- Cell
 
 data Cell ctx a b = Cell {
   write :: Push ctx a,
@@ -118,3 +138,77 @@ instance Monad (Cell ctx a) where
       pull2 c
     in Cell (Push push) (Pull pull)
 
+latest :: IO (Cell ctx a (Maybe a))
+latest = atomically $ do
+  var <- newTMVar Nothing
+  return $ Cell {
+    write = Push $ const $ putTMVar var . Just,
+    read = Pull $ const $ readTMVar var
+  }
+
+previous :: IO (Cell ctx a (Maybe a))
+previous = atomically $ do
+  var <- newTMVar (Nothing, Nothing)
+  return $ Cell {
+    write = Push $ const $ \a -> modifyTMVar var (\(latest, _) -> (Just a, latest)),
+    read = Pull $ const $ snd <$> readTMVar var
+  }
+
+count :: IO (Cell ctx a Int)
+count = atomically $ do
+  var <- newTMVar 0
+  return $ Cell {
+    write = Push $ const $ \a -> modifyTMVar var (+ 1),
+    read = Pull $ const $ readTMVar var
+  }
+
+all :: IO (Cell ctx a [a])
+all = atomically $ do
+  var <- newTMVar []
+  return $ Cell {
+    write = Push $ const $ modifyTMVar var . (:),
+    read = Pull $ const $ readTMVar var
+  }
+
+-- Push/Pull
+
+enrich :: Pull ctx b -> (a -> b -> c) -> Push ctx c -> Push ctx a
+enrich (Pull pull) f (Push push) = Push $ \c a -> do
+  b <- pull c
+  push c $ f a b
+
+-- I/O, failures
+
+fail :: Exception e => Push ctx e
+fail = Push $ const throwSTM
+
+failure :: Exception e => e -> Pull ctx a
+failure = Pull . const . throwSTM
+
+pushOut :: Int -> (a -> IO ()) -> IO (Push ctx a)
+pushOut queueSize consume = do
+  q <- newTBQueueIO (fromIntegral queueSize)
+  forkIO $ forever $ do
+    a <- atomically $ readTBQueue q
+    consume a
+  return $ Push $ const $ writeTBQueue q
+
+pullIn :: Int -> IO a -> IO (Pull ctx a)
+pullIn periodMilliseconds producer = do
+  a <- producer
+  var <- newTMVarIO a
+  forkIO $ forever $ do
+    threadDelay $ periodMilliseconds * 1000
+    a <- producer
+    atomically $ putTMVar var a
+  return $ Pull $ const $ readTMVar var
+
+pushIn :: Exception e => IO ctx -> Push ctx a -> a -> IO (Either e ())
+pushIn getContext (Push p) a = do
+  c <- getContext
+  atomically $ catchSTM (Right <$> p c a) (return . Left)
+
+pullOut :: Exception e => IO ctx -> Pull ctx a -> IO (Either e a)
+pullOut getContext (Pull p) = do
+  c <- getContext
+  atomically $ catchSTM  (Right <$> p c) (return . Left)

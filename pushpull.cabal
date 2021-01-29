@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 9bf74e8ccddfe5e86bbc5fd3a298dbfe9b780b9f8647b825decfac2c25f37cf3
+-- hash: 48d4aa6d4b7e438a380864e8c68d829a7c8d8a8b12252a2e405657131659aa87
 
 name:           pushpull
 version:        0.1.0.0
@@ -31,7 +31,6 @@ library
       PushPull.Combinators
       PushPull.Model
       PushPull.Primitives
-      PushPull.Runtime
       PushPull.STMExtras
   other-modules:
       Paths_pushpull

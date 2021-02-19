@@ -2,6 +2,10 @@ module PushPull.Primitives
   ( Push
   , Pull
   , Exception
+  , variable
+  , modify
+  , send
+  , sendBlocking
   , map
   , split
   , ignore
@@ -61,7 +65,7 @@ combination p1 p2 f = f <$> p1 <*> p2
 -- identity to combination: combination f constant p ~= p
 -- identity to selection: p `selection` constant = p
 constant :: a -> Pull ctx a
-constant = return
+constant = pure
 
 selection :: Pull ctx a -> (a -> Pull ctx b) -> Pull ctx b -- 2
 selection = (>>=)

@@ -16,7 +16,7 @@ clear.onClick do
   address.set ""
 ```
 
-In FRP, however you must think backwards (from outcomes back to triggers) which can be seens as harder:
+In FRP, however you must think backwards (from outcomes back to triggers) which can be seen as harder:
 
 ```
 name <- holdDyn "" $ leftmost [ userChangedName, "" <$ clear.clicked ]

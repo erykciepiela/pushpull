@@ -1,16 +1,15 @@
 module PushPull.Model
   ( Push
   , Pull
+  , variable
+  , modify
+  , send
+  , sendBlocking
   , pushIn
   , pushOut
   , pullIn
   , pullOut
-  , read
-  , write
   , enrich
-  , latest
-  , previous
-  , all
   , PushPull.Model.fail
   , failure
   , module Data.Void
@@ -22,7 +21,7 @@ module PushPull.Model
   , module Data.Functor.Contravariant.Divisible
   ) where
 
-import Prelude hiding (read, (.), id, all)
+import Prelude hiding ((.), id)
 
 import Data.Semigroupoid
 import Data.Functor.Contravariant
@@ -38,7 +37,10 @@ import Control.Monad
 import Control.Arrow
 import PushPull.STMExtras
 
--- Push
+-- Push - reads and writes state and enqueues values in contravariant/divisible/decidable way
+-- pulls, updates, enqueues, verbs, commands
+-- "specify the dynamic behavior of an occurence completely at the time of declaration"
+-- values occuring in time, events, ephemeral, happening, discrete
 
 newtype Push ctx a = Push (ctx -> a -> STM ())
 
@@ -59,7 +61,22 @@ instance Semigroup (Push ctx a) where
 instance Monoid (Push ctx a) where
   mempty = conquer
 
--- Pull
+-- ok, so we have a handful of combinators, but the only constructors we have are: conquer (ignore) and lose id (unreach)
+-- therefore the question: what non-trivial constructors can we have?
+
+modify :: TVar a -> Push ctx (a -> a)
+modify v = Push $ const $ modifyTVar v
+
+send :: TQueue a -> Push ctx a
+send q = Push $ const $ writeTQueue q
+
+sendBlocking :: TBQueue a -> Push ctx a
+sendBlocking q = Push $ const $ writeTBQueue q
+
+-- Pull - reads state in monadic way
+-- variables, constants, context and derivations thereof, nouns
+-- "specify the dynamic behavior of a value completely at the time of declaration"
+-- values changing in time, entities, always available, lasting, continuous
 
 newtype Pull ctx a = Pull (ctx -> STM a)
 
@@ -88,94 +105,42 @@ instance Monad (Pull ctx) where
     Pull pull2 <- f <$> pull1 c
     pull2 c
 
--- Cell
+-- ok, so we have a handful of combinators, but the only constructor we have is: pure (constant)
+-- therefore the question: what non-trivial constructors can we have?
 
-data Cell ctx a b = Cell {
-  write :: Push ctx a,
-  read :: Pull ctx b
-}
+variable :: TVar a -> Pull ctx a
+variable = Pull . const . readTVar
 
-instance Profunctor (Cell ctx) where
-  rmap f (Cell w r) = Cell w (fmap f r)
-  lmap f (Cell w r) = Cell (contramap f w) r
 
--- Cell is not a Category (lack of id :: Cell ctx a a) => Cell is not an Arrow either.
--- At least it's a Semigroupoid:
--- Still, not sure if it's Cell Semigroupoing is good idea: you're still able to push only to cell1 and cell2 will not be affected
-instance Semigroupoid (Cell ctx) where
-  Cell (Push push2) (Pull pull2) `o` Cell (Push push1) (Pull pull1)  = Cell (Push push1and2) (Pull pull2)
-    where
-      push1and2 c a = do
-        push1 c a
-        b <- pull1 c
-        push2 c b
--- one might think there's an alternative implementation, but it's invalid:
--- Cell (Push push2) (Pull pull2) `o` Cell (Push push1) (Pull pull1) = Cell (Push push1) (Pull pull1and2)
---    where
---      pull1and2 c = do
---        b <- pull1 c
---        push2 c b -- this is wrong: we shoud not push each time we pull!
---        pull2 c
-
-instance Functor (Cell ctx a) where
-  fmap = rmap
-
-instance Applicative (Cell ctx a) where
-  pure a = Cell conquer (pure a)
-  Cell pushg1 pullf <*> Cell pushg2 pulla = Cell (divide (\a -> (a, a)) pushg1 pushg2) (pullf <*> pulla)
-
-instance Monad (Cell ctx a) where
-  return = pure
-  Cell (Push push1) (Pull pull1) >>= f = let
-    push c a = do
-      push1 c a
-      b <- pull1 c
-      let Cell (Push push2) _ = f b
-      push2 c a
-    pull c = do
-      b <- pull1 c
-      let Cell _ (Pull pull2) = f b
-      pull2 c
-    in Cell (Push push) (Pull pull)
-
-latest :: IO (Cell ctx a (Maybe a))
-latest = atomically $ do
-  var <- newTMVar Nothing
-  return $ Cell {
-    write = Push $ const $ putTMVar var . Just,
-    read = Pull $ const $ readTMVar var
-  }
-
-previous :: IO (Cell ctx a (Maybe a))
-previous = atomically $ do
-  var <- newTMVar (Nothing, Nothing)
-  return $ Cell {
-    write = Push $ const $ \a -> modifyTMVar var (\(latest, _) -> (Just a, latest)),
-    read = Pull $ const $ snd <$> readTMVar var
-  }
-
-count :: IO (Cell ctx a Int)
-count = atomically $ do
-  var <- newTMVar 0
-  return $ Cell {
-    write = Push $ const $ \a -> modifyTMVar var (+ 1),
-    read = Pull $ const $ readTMVar var
-  }
-
-all :: IO (Cell ctx a [a])
-all = atomically $ do
-  var <- newTMVar []
-  return $ Cell {
-    write = Push $ const $ modifyTMVar var . (:),
-    read = Pull $ const $ readTMVar var
-  }
-
--- Push/Pull
+-- Push/Pull coupling
 
 enrich :: Pull ctx b -> (a -> b -> c) -> Push ctx c -> Push ctx a
 enrich (Pull pull) f (Push push) = Push $ \c a -> do
   b <- pull c
   push c $ f a b
+
+enrich' :: (a -> Pull ctx b) -> (a -> b -> c) -> Push ctx c -> Push ctx a
+enrich' s f (Push push) = Push $ \c a -> do
+  let (Pull pull) = s a
+  b <- pull c
+  push c $ f a b
+
+enrich'' :: (a -> Pull ctx b) -> Push ctx b -> Push ctx a
+enrich'' s (Push push) = Push $ \c a -> do
+  let (Pull pull) = s a
+  b <- pull c
+  push c b
+
+enrich''' :: Pull ctx b -> Push ctx b -> Push ctx a
+enrich''' (Pull pull) (Push push) = Push $ \c a -> do
+  b <- pull c
+  push c b
+
+
+read' :: Pull ctx a -> Push ctx a -> Push ctx b
+read' (Pull pull) (Push push) = Push $ \c a -> do
+  a <- pull c
+  push c a
 
 -- I/O, failures
 

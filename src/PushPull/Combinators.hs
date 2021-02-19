@@ -2,8 +2,12 @@ module PushPull.Combinators where
 
 import Prelude hiding (map, fail)
 import PushPull.Primitives
+import Control.Concurrent.STM.TVar
 
 -- Push
+
+change :: TVar a -> Push ctx a
+change = map const . modify
 
 select :: (a -> Maybe b) -> Push ctx b -> Push ctx a -- TODO: smell, cannot find proper name
 select f = route (maybe (Left ()) Right . f) ignore

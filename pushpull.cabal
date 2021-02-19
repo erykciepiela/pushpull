@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: ff7d9a57ecb8b75333cc643918f4667cde0056c60968057f890639af74500fa6
+-- hash: 2f54f9a4588dac8f49eed70cf5d65b6be576213a6f6902f775ed7667f0ed1149
 
 name:           pushpull
 version:        0.1.0.0
@@ -41,6 +41,7 @@ library
   build-depends:
       base >=4.7 && <5
     , contravariant
+    , distributive
     , profunctors
     , semigroupoids
     , stm
@@ -58,6 +59,7 @@ executable pushpull-exe
   build-depends:
       base >=4.7 && <5
     , contravariant
+    , distributive
     , profunctors
     , pushpull
     , semigroupoids
@@ -77,6 +79,7 @@ test-suite pushpull-test
   build-depends:
       base >=4.7 && <5
     , contravariant
+    , distributive
     , profunctors
     , pushpull
     , semigroupoids

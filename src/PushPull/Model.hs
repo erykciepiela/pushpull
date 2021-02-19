@@ -36,6 +36,7 @@ import Control.Category
 import Control.Monad
 import Control.Arrow
 import PushPull.STMExtras
+import Data.Distributive
 
 -- Push - reads and writes state and enqueues values in contravariant/divisible/decidable way
 -- pulls, updates, enqueues, verbs, commands
@@ -104,6 +105,9 @@ instance Monad (Pull ctx) where
   (Pull pull1) >>= f = Pull $ \c -> do
     Pull pull2 <- f <$> pull1 c
     pull2 c
+
+sequence :: Traversable t => t (Pull ctx a) -> Pull ctx (t a)
+sequence = sequenceA
 
 -- ok, so we have a handful of combinators, but the only constructor we have is: pure (constant)
 -- therefore the question: what non-trivial constructors can we have?

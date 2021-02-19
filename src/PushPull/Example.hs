@@ -28,10 +28,10 @@ main = do
   personIdVar <- newTVarIO 1
   firstNameVar <- newTVarIO "John"
   lastNameVar <- newTVarIO "Doe"
-  updateNotification <- newTQueueIO
+  notification <- newTQueueIO
 
   let
-    -- pulls
+    -- pulls / entities
     personId' = variable personIdVar
     firstName' = variable firstNameVar
     lastName' = variable lastNameVar
@@ -40,13 +40,12 @@ main = do
     currentTime' = contextTime <$> context
     person' = Person <$> personId' <*> firstName' <*> lastName'
     personCaption' = (\currentPersonId person -> if personId person == currentPersonId then "Me" else personFirstName person) <$> currentPersonId' <*> person'
-    -- pushes
-    -- sendTimestampedNotification :: Show a => Push Context a
-    sendTimestampedNotification = enrich currentTime' (\s t -> show t <> ": " <> show s) $ send updateNotification
-    updatePersonName = fork (change firstNameVar) sendTimestampedNotification
-    updateValidPersonName = enrich person' (,) $ routeIf (isPersonValid . snd) (map fst updatePersonName) ignore
+    -- pushes / events
+    timestampedNotification = enrich currentTime' (\s t -> show t <> ": " <> show s) $ send notification
+    personNameUpdate = fork (change firstNameVar) timestampedNotification
+    validPersonNameUpdate = enrich person' (,) $ routeIf (isPersonValid . snd) (map fst personNameUpdate) ignore
     -- or: (?)
-    -- let updateValidPersonName' = \newName -> do
+    -- let validPersonNameUpdate' = \newName -> do
     --       p <- readUpdate person'
     --       when (isPersonValid p) $ do
     --         writeUpdate firstNameVar newName

@@ -2,16 +2,16 @@ module PushPull.Model
   ( Push
   , Pull
   , variable
-  , modify
+  , change
   , send
   , sendBlocking
-  , pushIn
-  , pushOut
-  , pullIn
-  , pullOut
+  -- , pushIn
+  -- , pushOut
+  -- , pullIn
+  -- , pullOut
   , enrich
-  , PushPull.Model.fail
-  , failure
+  -- , PushPull.Model.fail
+  -- , failure
   , module Data.Void
   , module Control.Exception.Base
   , module Control.Concurrent.STM
@@ -42,36 +42,36 @@ import PushPull.STMExtras
 -- "specify the dynamic behavior of a value completely at the time of declaration"
 -- values changing in time, entities, always available, lasting, continuous
 
-newtype Pull ctx a = Pull (ctx -> STM a)
+newtype Pull m ctx a = Pull (ctx -> m a)
 
-instance Category Pull where
+instance Monad m => Category (Pull m) where
   id = Pull return
   Pull pull2 . Pull pull1 = Pull $ pull1 >=> pull2
 
-instance Profunctor Pull where
+instance Functor m => Profunctor (Pull m) where
   rmap f (Pull pull) = Pull $ fmap f <$> pull
   lmap f (Pull pull) = Pull $ pull . f
 
-instance Arrow Pull where
-  arr f = Pull $ return . f
+instance Monad m => Arrow (Pull m) where
+  arr f = Pull $ pure . f
   first (Pull pull) = Pull $ \(c, d) -> (,) <$> pull c <*> pure d
 
-instance Functor (Pull ctx) where
+instance Functor m => Functor (Pull m ctx) where
   fmap = rmap
 
-instance Applicative (Pull ctx) where
-  pure = Pull . const . return
+instance Applicative m => Applicative (Pull m ctx) where
+  pure = Pull . const . pure
   Pull f <*> Pull a = Pull $ \c -> f c <*> a c
 
-instance Monad (Pull ctx) where
+instance Monad m => Monad (Pull m ctx) where
   return = pure
   (Pull pull1) >>= f = Pull $ \c -> do
     Pull pull2 <- f <$> pull1 c
     pull2 c
 
 -- non trivial contructor
-variable :: TVar a -> Pull ctx a
-variable = Pull . const . readTVar
+variable :: m a -> Pull m ctx a
+variable = Pull . const
 
 
 -- Push - reads and writes state and enqueues values in contravariant/divisible/decidable way
@@ -79,97 +79,97 @@ variable = Pull . const . readTVar
 -- "specify the dynamic behavior of an occurence completely at the time of declaration"
 -- values occuring in time, events, ephemeral, happening, discrete
 
-newtype Push ctx a = Push (ctx -> a -> STM ())
+newtype Push m ctx a = Push (ctx -> a -> m ())
 
-instance Contravariant (Push ctx) where
+instance Contravariant (Push m ctx) where
   contramap f (Push p) = Push $ \c -> p c . f
 
-instance Divisible (Push ctx) where
-  divide f (Push p1) (Push p2) = Push $ \c a -> let (b1, b2) = f a in p1 c b1 >> p2 c b2
-  conquer = Push $ const $ const $ return ()
+instance Applicative m => Divisible (Push m ctx) where
+  divide f (Push p1) (Push p2) = Push $ \c a -> let (b1, b2) = f a in p1 c b1 *> p2 c b2
+  conquer = Push $ const $ const $ pure ()
 
-instance Decidable (Push ctx) where
+instance Applicative m => Decidable (Push m ctx) where
   choose f (Push p1) (Push p2) = Push $ \c -> either (p1 c) (p2 c) . f
   lose f = Push $ const $ absurd . f
 
-instance Semigroup (Push ctx a) where
+instance Applicative m => Semigroup (Push m ctx a) where
   p1 <> p2 = divide (\a -> (a, a)) p1 p2
 
-instance Monoid (Push ctx a) where
+instance Applicative m => Monoid (Push m ctx a) where
   mempty = conquer
 
 -- non-trivial contructors
-modify :: TVar a -> Push ctx (a -> a)
-modify v = Push $ const $ modifyTVar v
+change :: (a -> m ()) -> Push m ctx a
+change = Push . const
 
-send :: TQueue a -> Push ctx a
+send :: TQueue a -> Push STM ctx a
 send q = Push $ const $ writeTQueue q
 
-sendBlocking :: TBQueue a -> Push ctx a
+sendBlocking :: TBQueue a -> Push STM ctx a
 sendBlocking q = Push $ const $ writeTBQueue q
 
 -- Push/Pull coupling
 
-enrich :: Pull ctx b -> (a -> b -> c) -> Push ctx c -> Push ctx a
+enrich :: Monad m => Pull m ctx b -> (a -> b -> c) -> Push m ctx c -> Push m ctx a
 enrich (Pull pull) f (Push push) = Push $ \c a -> do
   b <- pull c
   push c $ f a b
 
-enrich' :: (a -> Pull ctx b) -> (a -> b -> c) -> Push ctx c -> Push ctx a
+enrich' :: Monad m => (a -> Pull m ctx b) -> (a -> b -> c) -> Push m ctx c -> Push m ctx a
 enrich' s f (Push push) = Push $ \c a -> do
   let (Pull pull) = s a
   b <- pull c
   push c $ f a b
 
-enrich'' :: (a -> Pull ctx b) -> Push ctx b -> Push ctx a
+enrich'' :: Monad m => (a -> Pull m ctx b) -> Push m ctx b -> Push m ctx a
 enrich'' s (Push push) = Push $ \c a -> do
   let (Pull pull) = s a
   b <- pull c
   push c b
 
-enrich''' :: Pull ctx b -> Push ctx b -> Push ctx a
+enrich''' :: Monad m => Pull m ctx b -> Push m ctx b -> Push m ctx a
 enrich''' (Pull pull) (Push push) = Push $ \c a -> do
   b <- pull c
   push c b
 
 
-read' :: Pull ctx a -> Push ctx a -> Push ctx b
+read' :: Monad m => Pull m ctx a -> Push m ctx a -> Push m ctx b
 read' (Pull pull) (Push push) = Push $ \c a -> do
   a <- pull c
   push c a
 
 -- I/O, failures
 
-fail :: Exception e => Push ctx e
-fail = Push $ const throwSTM
+-- fail :: Exception e => Push m ctx e
+-- fail = Push $ const throwSTM
 
-failure :: Exception e => e -> Pull ctx a
-failure = Pull . const . throwSTM
+-- failure :: Exception e => e -> Pull ctx a
+-- failure = Pull . const . throwSTM
 
-pushOut :: Int -> (a -> IO ()) -> IO (Push ctx a)
-pushOut queueSize consume = do
-  q <- newTBQueueIO (fromIntegral queueSize)
-  forkIO $ forever $ do
-    a <- atomically $ readTBQueue q
-    consume a
-  return $ Push $ const $ writeTBQueue q
+-- pushOut :: Int -> (a -> IO ()) -> IO (Push ctx a)
+-- pushOut queueSize consume = do
+--   q <- newTBQueueIO (fromIntegral queueSize)
+--   forkIO $ forever $ do
+--     a <- atomically $ readTBQueue q
+--     consume a
+--   return $ Push $ const $ writeTBQueue q
 
-pullIn :: Int -> IO a -> IO (Pull ctx a)
-pullIn periodMilliseconds producer = do
-  a <- producer
-  var <- newTMVarIO a
-  forkIO $ forever $ do
-    threadDelay $ periodMilliseconds * 1000
-    a <- producer
-    atomically $ putTMVar var a
-  return $ Pull $ const $ readTMVar var
+-- pullIn :: Int -> IO a -> IO (Pull ctx a)
+-- pullIn periodMilliseconds producer = do
+--   a <- producer
+--   var <- newTMVarIO a
+--   forkIO $ forever $ do
+--     threadDelay $ periodMilliseconds * 1000
+--     a <- producer
+--     atomically $ putTMVar var a
+--   return $ Pull $ const $ readTMVar var
 
-pushIn :: Exception e => IO ctx -> Push ctx a -> a -> IO (Either e ())
-pushIn getContext (Push p) a = do
-  c <- getContext
-  atomically $ catchSTM (Right <$> p c a) (return . Left)
+-- pushIn :: Exception e => IO ctx -> Push ctx a -> a -> IO (Either e ())
+-- pushIn getContext (Push p) a = do
+--   c <- getContext
+--   atomically $ catchSTM (Right <$> p c a) (return . Left)
 
-pullOut :: Exception e => IO ctx -> Pull ctx a -> IO (Either e a)
-pullOut getContext (Pull p) = do
-  c <- getContext
-  atomically $ catchSTM  (Right <$> p c) (return . Left)
+-- pullOut :: Exception e => IO ctx -> Pull ctx a -> IO (Either e a)
+-- pullOut getContext (Pull p) = do
+--   c <- getContext
+--   atomically $ catchSTM  (Right <$> p c) (return . Left)

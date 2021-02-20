@@ -2,11 +2,14 @@ module PushPull.Example where
 
 import Prelude hiding (map)
 
+import Control.Concurrent.STM
 import Control.Concurrent.STM.TVar
 import Control.Concurrent.STM.TQueue
 import PushPull.Business
 import Control.Monad
 import Data.Time
+
+import Data.IORef
 
 data Person = Person {
   personId :: Int,
@@ -25,28 +28,47 @@ data Context = Context {
 main :: IO ()
 main = do
   -- tvars/tqueues
-  personIdVar <- newTVarIO 1
-  firstNameVar <- newTVarIO "John"
-  lastNameVar <- newTVarIO "Doe"
-  notification <- newTQueueIO
+  personIdVar <- newIORef 1
+  firstNameVar <- newIORef "John"
+  lastNameVar <- newIORef "Doe"
+  let notification = putStrLn
 
   let
     -- pulls / entities
-    personId' = variable personIdVar
-    firstName' = variable firstNameVar
-    lastName' = variable lastNameVar
+    personId' = variable $ readIORef personIdVar
+    firstName' = variable $ readIORef firstNameVar
+    lastName' = variable $ readIORef lastNameVar
     quota' = constant 100
     currentPersonId' = contextCurrentPersonId <$> context
     currentTime' = contextTime <$> context
     person' = Person <$> personId' <*> firstName' <*> lastName'
-    personCaption' = (\currentPersonId person -> if personId person == currentPersonId then "Me" else personFirstName person) <$> currentPersonId' <*> person'
+    personCaption' = (\currentPersonId person quota -> (if personId person == currentPersonId then "Me" else personFirstName person) <> show quota)  <$> currentPersonId' <*> person' <*> quota'
     -- pushes / events
-    timestampedNotification = enrich currentTime' (\s t -> show t <> ": " <> show s) $ send notification
-    personNameUpdate = fork (change firstNameVar) timestampedNotification
+    timestampedNotification = enrich currentTime' (\s t -> show t <> ": " <> show s) $ change notification
+    personNameUpdate = fork (change (writeIORef firstNameVar)) timestampedNotification
     validPersonNameUpdate = enrich person' (,) $ routeIf (isPersonValid . snd) (map fst personNameUpdate) ignore
-    -- or: (?)
-    -- let validPersonNameUpdate' = \newName -> do
-    --       p <- readUpdate person'
-    --       when (isPersonValid p) $ do
-    --         writeUpdate firstNameVar newName
   return ()
+
+-- main :: IO ()
+-- main = do
+--   -- tvars/tqueues
+--   personIdVar <- newTVarIO 1
+--   firstNameVar <- newTVarIO "John"
+--   lastNameVar <- newTVarIO "Doe"
+--   notification <- newTQueueIO
+
+--   let
+--     -- pulls / entities
+--     personId' = variable $ readTVar personIdVar
+--     firstName' = variable $ readTVar firstNameVar
+--     lastName' = variable $ readTVar lastNameVar
+--     quota' = constant 100
+--     currentPersonId' = contextCurrentPersonId <$> context
+--     currentTime' = contextTime <$> context
+--     person' = Person <$> personId' <*> firstName' <*> lastName'
+--     personCaption' = (\currentPersonId person quota -> (if personId person == currentPersonId then "Me" else personFirstName person) <> show quota)  <$> currentPersonId' <*> person' <*> quota'
+--     -- pushes / events
+--     timestampedNotification = enrich currentTime' (\s t -> show t <> ": " <> show s) $ change (writeTQueue notification)
+--     personNameUpdate = fork (change (writeTVar firstNameVar)) timestampedNotification
+--     validPersonNameUpdate = enrich person' (,) $ routeIf (isPersonValid . snd) (map fst personNameUpdate) ignore
+--   return ()

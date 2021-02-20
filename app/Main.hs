@@ -6,6 +6,7 @@ import PushPull.Business
 import Control.Concurrent
 import Data.Time
 import Control.Exception.Base
+import qualified PushPull.Example as E
 
 data MyContext = MyContext {
   currentTime :: UTCTime,
@@ -44,4 +45,5 @@ main = do
   -- let clear = replace "" $ write nameCell <> write addressCell
   -- let name = read nameCell
   -- let address = read addressCell
+  E.main
   return ()

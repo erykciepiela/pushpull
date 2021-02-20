@@ -4,9 +4,9 @@ module PushPull.Primitives
   , Exception
   , sequence'
   , variable
-  , modify
-  , send
-  , sendBlocking
+  , change
+  -- , send
+  -- , sendBlocking
   , map
   , split
   , ignore
@@ -18,8 +18,8 @@ module PushPull.Primitives
   , selection
   , context
   , enrich
-  , fail
-  , failure
+  -- , fail
+  -- , failure
   , fork
   , forkN
 ) where
@@ -31,63 +31,63 @@ import PushPull.STMExtras
 
 -- Push
 
-map :: (b -> a) -> Push ctx a -> Push ctx b
+map :: (b -> a) -> Push m ctx a -> Push m ctx b
 map = contramap
 
-split :: (a -> (b, c)) -> Push ctx b -> Push ctx c -> Push ctx a
+split :: Applicative m => (a -> (b, c)) -> Push m ctx b -> Push m ctx c -> Push m ctx a
 split = divide
 
 -- identity for split: split f ignore p ~= p
-ignore :: Push ctx a
+ignore :: Applicative m => Push m ctx a
 ignore = conquer
 
-route :: (a -> Either b c) -> Push ctx b -> Push ctx c -> Push ctx a
+route :: Applicative m => (a -> Either b c) -> Push m ctx b -> Push m ctx c -> Push m ctx a
 route = choose
 
 -- identity to route: route f unreach p ~= p
-unreach :: Push ctx Void
+unreach :: Applicative m => Push m ctx Void
 unreach = lose id
 
-fork :: Push ctx a -> Push ctx a -> Push ctx a
+fork :: Applicative m => Push m ctx a -> Push m ctx a -> Push m ctx a
 fork = mappend
 
-forkN :: [Push ctx a] -> Push ctx a
+forkN :: Applicative m => [Push m ctx a] -> Push m ctx a
 forkN = mconcat
 
 -- Pull
 
-sequence' :: Traversable t => t (Pull ctx a) -> Pull ctx (t a)
+sequence' :: (Applicative m, Traversable t) => t (Pull m ctx a) -> Pull m ctx (t a)
 sequence' = sequenceA
 
 -- TODO: smell, the same as in Push's map
-mapping :: Pull ctx a -> (a -> b) -> Pull ctx b
+mapping :: Functor m => Pull m ctx a -> (a -> b) -> Pull m ctx b
 mapping = flip fmap
 
-combination :: Pull ctx a -> Pull ctx b -> (a -> b -> c) -> Pull ctx c
+combination :: Applicative m => Pull m ctx a -> Pull m ctx b -> (a -> b -> c) -> Pull m ctx c
 combination p1 p2 f = f <$> p1 <*> p2
 
 -- identity to combination: combination f constant p ~= p
 -- identity to selection: p `selection` constant = p
-constant :: a -> Pull ctx a
+constant :: Applicative m => a -> Pull m ctx a
 constant = pure
 
-selection :: Pull ctx a -> (a -> Pull ctx b) -> Pull ctx b -- 2
+selection :: Monad m => Pull m ctx a -> (a -> Pull m ctx b) -> Pull m ctx b -- 2
 selection = (>>=)
 
-context :: Pull ctx ctx
+context :: Monad m => Pull m ctx ctx
 context = id
 
-fromContext :: (ctx -> a) -> Pull ctx a
+fromContext :: Monad m => (ctx -> a) -> Pull m ctx a
 fromContext = arr
 
 -- TODO name?
-foo :: Pull ctx ctx' -> Pull ctx' a -> Pull ctx a
+foo :: Monad m => Pull m ctx ctx' -> Pull m ctx' a -> Pull m ctx a
 foo = (>>>)
 
 -- TODO name?
-bar :: (ctx -> a) -> Pull ctx a
+bar :: Monad m => (ctx -> a) -> Pull m ctx a
 bar = arr
 
 -- TODO name?
-baz :: Pull ctx a -> Pull (ctx, d) (a, d)
+baz :: Monad m => Pull m ctx a -> Pull m (ctx, d) (a, d)
 baz = first

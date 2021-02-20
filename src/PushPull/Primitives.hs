@@ -2,6 +2,7 @@ module PushPull.Primitives
   ( Push
   , Pull
   , Exception
+  , sequence'
   , variable
   , modify
   , send
@@ -55,6 +56,9 @@ forkN = mconcat
 
 -- Pull
 
+sequence' :: Traversable t => t (Pull ctx a) -> Pull ctx (t a)
+sequence' = sequenceA
+
 -- TODO: smell, the same as in Push's map
 mapping :: Pull ctx a -> (a -> b) -> Pull ctx b
 mapping = flip fmap
@@ -72,6 +76,9 @@ selection = (>>=)
 
 context :: Pull ctx ctx
 context = id
+
+fromContext :: (ctx -> a) -> Pull ctx a
+fromContext = arr
 
 -- TODO name?
 foo :: Pull ctx ctx' -> Pull ctx' a -> Pull ctx a

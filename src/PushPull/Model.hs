@@ -36,43 +36,6 @@ import Control.Category
 import Control.Monad
 import Control.Arrow
 import PushPull.STMExtras
-import Data.Distributive
-
--- Push - reads and writes state and enqueues values in contravariant/divisible/decidable way
--- pulls, updates, enqueues, verbs, commands
--- "specify the dynamic behavior of an occurence completely at the time of declaration"
--- values occuring in time, events, ephemeral, happening, discrete
-
-newtype Push ctx a = Push (ctx -> a -> STM ())
-
-instance Contravariant (Push ctx) where
-  contramap f (Push p) = Push $ \c -> p c . f
-
-instance Divisible (Push ctx) where
-  divide f (Push p1) (Push p2) = Push $ \c a -> let (b1, b2) = f a in p1 c b1 >> p2 c b2
-  conquer = Push $ const $ const $ return ()
-
-instance Decidable (Push ctx) where
-  choose f (Push p1) (Push p2) = Push $ \c -> either (p1 c) (p2 c) . f
-  lose f = Push $ const $ absurd . f
-
-instance Semigroup (Push ctx a) where
-  p1 <> p2 = divide (\a -> (a, a)) p1 p2
-
-instance Monoid (Push ctx a) where
-  mempty = conquer
-
--- ok, so we have a handful of combinators, but the only constructors we have are: conquer (ignore) and lose id (unreach)
--- therefore the question: what non-trivial constructors can we have?
-
-modify :: TVar a -> Push ctx (a -> a)
-modify v = Push $ const $ modifyTVar v
-
-send :: TQueue a -> Push ctx a
-send q = Push $ const $ writeTQueue q
-
-sendBlocking :: TBQueue a -> Push ctx a
-sendBlocking q = Push $ const $ writeTBQueue q
 
 -- Pull - reads state in monadic way
 -- variables, constants, context and derivations thereof, nouns
@@ -106,15 +69,44 @@ instance Monad (Pull ctx) where
     Pull pull2 <- f <$> pull1 c
     pull2 c
 
-sequence :: Traversable t => t (Pull ctx a) -> Pull ctx (t a)
-sequence = sequenceA
-
--- ok, so we have a handful of combinators, but the only constructor we have is: pure (constant)
--- therefore the question: what non-trivial constructors can we have?
-
+-- non trivial contructor
 variable :: TVar a -> Pull ctx a
 variable = Pull . const . readTVar
 
+
+-- Push - reads and writes state and enqueues values in contravariant/divisible/decidable way
+-- pulls, updates, enqueues, verbs, commands
+-- "specify the dynamic behavior of an occurence completely at the time of declaration"
+-- values occuring in time, events, ephemeral, happening, discrete
+
+newtype Push ctx a = Push (ctx -> a -> STM ())
+
+instance Contravariant (Push ctx) where
+  contramap f (Push p) = Push $ \c -> p c . f
+
+instance Divisible (Push ctx) where
+  divide f (Push p1) (Push p2) = Push $ \c a -> let (b1, b2) = f a in p1 c b1 >> p2 c b2
+  conquer = Push $ const $ const $ return ()
+
+instance Decidable (Push ctx) where
+  choose f (Push p1) (Push p2) = Push $ \c -> either (p1 c) (p2 c) . f
+  lose f = Push $ const $ absurd . f
+
+instance Semigroup (Push ctx a) where
+  p1 <> p2 = divide (\a -> (a, a)) p1 p2
+
+instance Monoid (Push ctx a) where
+  mempty = conquer
+
+-- non-trivial contructors
+modify :: TVar a -> Push ctx (a -> a)
+modify v = Push $ const $ modifyTVar v
+
+send :: TQueue a -> Push ctx a
+send q = Push $ const $ writeTQueue q
+
+sendBlocking :: TBQueue a -> Push ctx a
+sendBlocking q = Push $ const $ writeTBQueue q
 
 -- Push/Pull coupling
 

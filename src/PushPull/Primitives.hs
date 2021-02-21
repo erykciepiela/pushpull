@@ -5,6 +5,8 @@ module PushPull.Primitives
   , sequence'
   , variable
   , change
+  , push
+  , pull
   -- , send
   -- , sendBlocking
   , map

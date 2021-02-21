@@ -27,7 +27,7 @@ data Context = Context {
 
 main :: IO ()
 main = do
-  -- tvars/tqueues
+  -- data
   personIdVar <- newIORef 1
   firstNameVar <- newIORef "John"
   lastNameVar <- newIORef "Doe"
@@ -47,6 +47,9 @@ main = do
     timestampedNotification = enrich currentTime' (\s t -> show t <> ": " <> show s) $ change notification
     personNameUpdate = fork (change (writeIORef firstNameVar)) timestampedNotification
     validPersonNameUpdate = enrich person' (,) $ routeIf (isPersonValid . snd) (map fst personNameUpdate) ignore
+  t <- getCurrentTime
+  pull personCaption' (Context 1 t) >>= print
+  push validPersonNameUpdate (Context 1 t) "James"
   return ()
 
 -- main :: IO ()

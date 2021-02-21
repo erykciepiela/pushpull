@@ -5,6 +5,8 @@ module PushPull.Model
   , change
   , send
   , sendBlocking
+  , push
+  , pull
   -- , pushIn
   -- , pushOut
   -- , pullIn
@@ -139,6 +141,12 @@ read' (Pull pull) (Push push) = Push $ \c a -> do
   push c a
 
 -- I/O, failures
+
+pull :: Pull m ctx a -> ctx -> m a
+pull (Pull p) = p
+
+push :: Push m ctx a -> ctx -> a -> m ()
+push (Push p) = p
 
 -- fail :: Exception e => Push m ctx e
 -- fail = Push $ const throwSTM

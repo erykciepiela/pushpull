@@ -35,20 +35,20 @@ main = do
 
   let
     -- cells
-    personId' = cell (writeIORef personIdVar) (readIORef personIdVar)
-    firstName' = cell (writeIORef firstNameVar) (readIORef firstNameVar)
-    lastName' = cell (writeIORef lastNameVar) (readIORef lastNameVar)
+    aPersonId = cell (writeIORef personIdVar) (readIORef personIdVar)
+    aFirstName = cell (writeIORef firstNameVar) (readIORef firstNameVar)
+    aLastName = cell (writeIORef lastNameVar) (readIORef lastNameVar)
     -- pulls / entities
-    quota' = constant 100
-    currentPersonId' = contextCurrentPersonId <$> context
-    currentTime' = contextTime <$> context
-    person' = Person <$> get personId' <*> get firstName' <*> get lastName'
-    personCaption' = (\currentPersonId person quota -> (if personId person == currentPersonId then "Me" else personFirstName person) <> show quota)  <$> currentPersonId' <*> person' <*> quota'
+    quota = constant 100
+    currentPersonId = contextCurrentPersonId <$> context
+    currentTime = contextTime <$> context
+    aPerson = Person <$> get aPersonId <*> get aFirstName <*> get aLastName
+    aPersonCaption = (\currentPersonId person quota -> (if personId person == currentPersonId then "Me" else personFirstName person) <> show quota)  <$> currentPersonId <*> aPerson <*> quota
     -- pushes / events
-    timestampedNotification = enrich currentTime' (\s t -> show t <> ": " <> show s) $ send notification
-    personNameUpdate = fork (put firstName') timestampedNotification
-    validPersonNameUpdate = enrich person' (,) $ routeIf (isPersonValid . snd) (map fst personNameUpdate) ignore
+    timestampedNotification = enrich currentTime (\s t -> show t <> ": " <> show s) $ send notification
+    personNameUpdate = fork (put aFirstName) timestampedNotification
+    validPersonNameUpdate = enrich aPerson (,) $ routeIf (isPersonValid . snd) (map fst personNameUpdate) ignore
   t <- getCurrentTime
-  pull personCaption' (Context 1 t) >>= print
+  pull aPersonCaption (Context 1 t) >>= print
   push validPersonNameUpdate (Context 1 t) "James"
   return ()

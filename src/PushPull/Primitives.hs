@@ -1,14 +1,15 @@
 module PushPull.Primitives
   ( Push
   , Pull
+  , Cell
+  , get
+  , put
   , Exception
   , sequence'
-  , variable
-  , change
+  , cell
+  , send
   , push
   , pull
-  -- , send
-  -- , sendBlocking
   , map
   , split
   , ignore

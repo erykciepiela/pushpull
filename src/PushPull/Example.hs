@@ -34,44 +34,21 @@ main = do
   let notification = putStrLn
 
   let
+    -- cells
+    personId' = cell (writeIORef personIdVar) (readIORef personIdVar)
+    firstName' = cell (writeIORef firstNameVar) (readIORef firstNameVar)
+    lastName' = cell (writeIORef lastNameVar) (readIORef lastNameVar)
     -- pulls / entities
-    personId' = variable $ readIORef personIdVar
-    firstName' = variable $ readIORef firstNameVar
-    lastName' = variable $ readIORef lastNameVar
     quota' = constant 100
     currentPersonId' = contextCurrentPersonId <$> context
     currentTime' = contextTime <$> context
-    person' = Person <$> personId' <*> firstName' <*> lastName'
+    person' = Person <$> get personId' <*> get firstName' <*> get lastName'
     personCaption' = (\currentPersonId person quota -> (if personId person == currentPersonId then "Me" else personFirstName person) <> show quota)  <$> currentPersonId' <*> person' <*> quota'
     -- pushes / events
-    timestampedNotification = enrich currentTime' (\s t -> show t <> ": " <> show s) $ change notification
-    personNameUpdate = fork (change (writeIORef firstNameVar)) timestampedNotification
+    timestampedNotification = enrich currentTime' (\s t -> show t <> ": " <> show s) $ send notification
+    personNameUpdate = fork (put firstName') timestampedNotification
     validPersonNameUpdate = enrich person' (,) $ routeIf (isPersonValid . snd) (map fst personNameUpdate) ignore
   t <- getCurrentTime
   pull personCaption' (Context 1 t) >>= print
   push validPersonNameUpdate (Context 1 t) "James"
   return ()
-
--- main :: IO ()
--- main = do
---   -- tvars/tqueues
---   personIdVar <- newTVarIO 1
---   firstNameVar <- newTVarIO "John"
---   lastNameVar <- newTVarIO "Doe"
---   notification <- newTQueueIO
-
---   let
---     -- pulls / entities
---     personId' = variable $ readTVar personIdVar
---     firstName' = variable $ readTVar firstNameVar
---     lastName' = variable $ readTVar lastNameVar
---     quota' = constant 100
---     currentPersonId' = contextCurrentPersonId <$> context
---     currentTime' = contextTime <$> context
---     person' = Person <$> personId' <*> firstName' <*> lastName'
---     personCaption' = (\currentPersonId person quota -> (if personId person == currentPersonId then "Me" else personFirstName person) <> show quota)  <$> currentPersonId' <*> person' <*> quota'
---     -- pushes / events
---     timestampedNotification = enrich currentTime' (\s t -> show t <> ": " <> show s) $ change (writeTQueue notification)
---     personNameUpdate = fork (change (writeTVar firstNameVar)) timestampedNotification
---     validPersonNameUpdate = enrich person' (,) $ routeIf (isPersonValid . snd) (map fst personNameUpdate) ignore
---   return ()

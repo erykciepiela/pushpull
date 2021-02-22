@@ -1,10 +1,11 @@
 module PushPull.Model
   ( Push
   , Pull
-  , variable
-  , change
+  , Cell
+  , get
+  , put
+  , cell
   , send
-  , sendBlocking
   , push
   , pull
   -- , pushIn
@@ -71,11 +72,6 @@ instance Monad m => Monad (Pull m ctx) where
     Pull pull2 <- f <$> pull1 c
     pull2 c
 
--- non trivial contructor
-variable :: m a -> Pull m ctx a
-variable = Pull . const
-
-
 -- Push - reads and writes state and enqueues values in contravariant/divisible/decidable way
 -- pulls, updates, enqueues, verbs, commands
 -- "specify the dynamic behavior of an occurence completely at the time of declaration"
@@ -100,15 +96,19 @@ instance Applicative m => Semigroup (Push m ctx a) where
 instance Applicative m => Monoid (Push m ctx a) where
   mempty = conquer
 
+data Cell m a = Cell {
+  put :: forall ctx . Push m ctx a,
+  get :: forall ctx . Pull m ctx a
+}
+
+
 -- non-trivial contructors
-change :: (a -> m ()) -> Push m ctx a
-change = Push . const
 
-send :: TQueue a -> Push STM ctx a
-send q = Push $ const $ writeTQueue q
+cell :: (a -> m ()) -> m a -> Cell m a
+cell put get = Cell (Push $ const put) (Pull $ const get)
 
-sendBlocking :: TBQueue a -> Push STM ctx a
-sendBlocking q = Push $ const $ writeTBQueue q
+send :: (a -> m ()) -> Push m ctx a
+send a = Push $ const a
 
 -- Push/Pull coupling
 

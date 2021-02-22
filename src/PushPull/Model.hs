@@ -40,6 +40,7 @@ import Control.Category
 import Control.Monad
 import Control.Arrow
 import PushPull.STMExtras
+import Data.Functor
 
 -- Pull - reads state in monadic way
 -- variables, constants, context and derivations thereof, nouns
@@ -84,14 +85,14 @@ instance Monad m => Monad (Pull m ctx) where
 -- "specify the dynamic behavior of an occurence completely at the time of declaration"
 -- values occuring in time, events, ephemeral, happening, discrete
 
-newtype Push m ctx a = Push (ctx -> a -> m ())
+newtype Push m ctx a = Push (ctx -> a -> m [String])
 
 instance Contravariant (Push m ctx) where
   contramap f (Push p) = Push $ \c -> p c . f
 
 instance Applicative m => Divisible (Push m ctx) where
-  divide f (Push p1) (Push p2) = Push $ \c a -> let (b1, b2) = f a in p1 c b1 *> p2 c b2
-  conquer = Push $ const $ const $ pure ()
+  divide f (Push p1) (Push p2) = Push $ \c a -> let (b1, b2) = f a in (<>) <$> p1 c b1 <*> p2 c b2
+  conquer = Push $ const $ const $ pure []
 
 instance Applicative m => Decidable (Push m ctx) where
   choose f (Push p1) (Push p2) = Push $ \c -> either (p1 c) (p2 c) . f
@@ -113,17 +114,17 @@ data Cell m a = Cell {
 -- non-trivial contructors
 
 cell :: Applicative m => String -> (a -> m ()) -> m a -> Cell m a
-cell name put get = Cell name (Push $ const put) (Pull (const get) (const $ pure [name]))
+cell name put get = Cell name (Push $ const $ \a -> put a $> [name]) (Pull (const get) (const $ pure [name]))
 
-send :: (a -> m ()) -> Push m ctx a
-send a = Push $ const a
+send :: Functor m => (a -> m ()) -> Push m ctx a
+send am = Push $ const $ \a -> am a $> []
 
 -- Push/Pull coupling
 
 enrich :: Monad m => Pull m ctx b -> (a -> b -> c) -> Push m ctx c -> Push m ctx a
-enrich (Pull pull _) f (Push push) = Push $ \c a -> do
+enrich (Pull pull _) f (Push push) = Push $ \c a -> (do
   b <- pull c
-  push c $ f a b
+  push c $ f a b)
 
 enrich' :: Monad m => (a -> Pull m ctx b) -> (a -> b -> c) -> Push m ctx c -> Push m ctx a
 enrich' s f (Push push) = Push $ \c a -> do
@@ -153,7 +154,7 @@ read' (Pull pull _) (Push push) = Push $ \c a -> do
 pull :: Pull m ctx a -> ctx -> m a
 pull (Pull p _) = p
 
-push :: Push m ctx a -> ctx -> a -> m ()
+push :: Push m ctx a -> ctx -> a -> m [String]
 push (Push p) = p
 
 -- fail :: Exception e => Push m ctx e

@@ -50,7 +50,8 @@ main = do
     validPersonNameUpdate = enrich aPerson (,) $ routeIf (isPersonValid . snd) (map fst personNameUpdate) ignore
   t <- getCurrentTime
   pull aPersonCaption (Context 1 t) >>= print
-  push validPersonNameUpdate (Context 1 t) "James"
-  rs <- pullRoots aPersonCaption (Context 1 t)
-  print rs
+  pushedRoots <- push validPersonNameUpdate (Context 1 t) "James"
+  print pushedRoots
+  pulledRoots <- pullRoots aPersonCaption (Context 1 t)
+  print pulledRoots
   return ()

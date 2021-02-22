@@ -10,6 +10,7 @@ module PushPull.Primitives
   , send
   , push
   , pull
+  , pullRoots
   , map
   , split
   , ignore

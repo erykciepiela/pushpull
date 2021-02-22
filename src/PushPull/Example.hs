@@ -35,9 +35,9 @@ main = do
 
   let
     -- cells
-    aPersonId = cell (writeIORef personIdVar) (readIORef personIdVar)
-    aFirstName = cell (writeIORef firstNameVar) (readIORef firstNameVar)
-    aLastName = cell (writeIORef lastNameVar) (readIORef lastNameVar)
+    aPersonId = cell "aPersonId" (writeIORef personIdVar) (readIORef personIdVar)
+    aFirstName = cell "aFirstName" (writeIORef firstNameVar) (readIORef firstNameVar)
+    aLastName = cell "aLastName" (writeIORef lastNameVar) (readIORef lastNameVar)
     -- pulls / entities
     quota = constant 100
     currentPersonId = contextCurrentPersonId <$> context
@@ -51,4 +51,6 @@ main = do
   t <- getCurrentTime
   pull aPersonCaption (Context 1 t) >>= print
   push validPersonNameUpdate (Context 1 t) "James"
+  rs <- pullRoots aPersonCaption (Context 1 t)
+  print rs
   return ()

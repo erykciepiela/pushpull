@@ -8,6 +8,7 @@ module PushPull.Model
   , send
   , push
   , pull
+  , pullRoots
   -- , pushIn
   -- , pushOut
   -- , pullIn
@@ -45,32 +46,38 @@ import PushPull.STMExtras
 -- "specify the dynamic behavior of a value completely at the time of declaration"
 -- values changing in time, entities, always available, lasting, continuous
 
-newtype Pull m ctx a = Pull (ctx -> m a)
+data Pull m ctx a = Pull (ctx -> m a) (ctx -> m [String])
 
+pullRoots :: Pull m ctx a -> ctx -> m [String]
+pullRoots (Pull _ roots) = roots
 instance Monad m => Category (Pull m) where
-  id = Pull return
-  Pull pull2 . Pull pull1 = Pull $ pull1 >=> pull2
+  id = Pull return (const $ return [])
+  Pull pull2 roots2 . Pull pull1 roots1 = Pull (pull1 >=> pull2) (\c -> do
+    c' <- pull1 c
+    (<>) <$> roots2 c' <*> roots1 c)
 
 instance Functor m => Profunctor (Pull m) where
-  rmap f (Pull pull) = Pull $ fmap f <$> pull
-  lmap f (Pull pull) = Pull $ pull . f
+  rmap f (Pull pull roots) = Pull (fmap f <$> pull) roots
+  lmap f (Pull pull roots) = Pull (pull . f) (roots . f)
 
 instance Monad m => Arrow (Pull m) where
-  arr f = Pull $ pure . f
-  first (Pull pull) = Pull $ \(c, d) -> (,) <$> pull c <*> pure d
+  arr f = Pull (pure . f) (const $ return [])
+  first (Pull pull roots) = Pull (\(c, d) -> (,) <$> pull c <*> pure d) (\(c, d) -> roots c)
 
 instance Functor m => Functor (Pull m ctx) where
   fmap = rmap
 
 instance Applicative m => Applicative (Pull m ctx) where
-  pure = Pull . const . pure
-  Pull f <*> Pull a = Pull $ \c -> f c <*> a c
+  pure a = Pull (const $ pure a) (const $ pure [])
+  Pull f rootsf <*> Pull a rootsa = Pull (\c -> f c <*> a c) (\c -> (<>) <$> rootsf c <*> rootsa c)
 
 instance Monad m => Monad (Pull m ctx) where
   return = pure
-  (Pull pull1) >>= f = Pull $ \c -> do
-    Pull pull2 <- f <$> pull1 c
-    pull2 c
+  (Pull pull1 roots1) >>= f = Pull (\c -> do
+    Pull pull2 roots2 <- f <$> pull1 c
+    pull2 c) (\c -> do
+      Pull pull2 roots2 <- f <$> pull1 c
+      (<>) <$> roots1 c <*> roots2 c)
 
 -- Push - reads and writes state and enqueues values in contravariant/divisible/decidable way
 -- pulls, updates, enqueues, verbs, commands
@@ -97,6 +104,7 @@ instance Applicative m => Monoid (Push m ctx a) where
   mempty = conquer
 
 data Cell m a = Cell {
+  cellName :: String,
   put :: forall ctx . Push m ctx a,
   get :: forall ctx . Pull m ctx a
 }
@@ -104,8 +112,8 @@ data Cell m a = Cell {
 
 -- non-trivial contructors
 
-cell :: (a -> m ()) -> m a -> Cell m a
-cell put get = Cell (Push $ const put) (Pull $ const get)
+cell :: Applicative m => String -> (a -> m ()) -> m a -> Cell m a
+cell name put get = Cell name (Push $ const put) (Pull (const get) (const $ pure [name]))
 
 send :: (a -> m ()) -> Push m ctx a
 send a = Push $ const a
@@ -113,37 +121,37 @@ send a = Push $ const a
 -- Push/Pull coupling
 
 enrich :: Monad m => Pull m ctx b -> (a -> b -> c) -> Push m ctx c -> Push m ctx a
-enrich (Pull pull) f (Push push) = Push $ \c a -> do
+enrich (Pull pull _) f (Push push) = Push $ \c a -> do
   b <- pull c
   push c $ f a b
 
 enrich' :: Monad m => (a -> Pull m ctx b) -> (a -> b -> c) -> Push m ctx c -> Push m ctx a
 enrich' s f (Push push) = Push $ \c a -> do
-  let (Pull pull) = s a
+  let (Pull pull _) = s a
   b <- pull c
   push c $ f a b
 
 enrich'' :: Monad m => (a -> Pull m ctx b) -> Push m ctx b -> Push m ctx a
 enrich'' s (Push push) = Push $ \c a -> do
-  let (Pull pull) = s a
+  let (Pull pull _) = s a
   b <- pull c
   push c b
 
 enrich''' :: Monad m => Pull m ctx b -> Push m ctx b -> Push m ctx a
-enrich''' (Pull pull) (Push push) = Push $ \c a -> do
+enrich''' (Pull pull _) (Push push) = Push $ \c a -> do
   b <- pull c
   push c b
 
 
 read' :: Monad m => Pull m ctx a -> Push m ctx a -> Push m ctx b
-read' (Pull pull) (Push push) = Push $ \c a -> do
+read' (Pull pull _) (Push push) = Push $ \c a -> do
   a <- pull c
   push c a
 
 -- I/O, failures
 
 pull :: Pull m ctx a -> ctx -> m a
-pull (Pull p) = p
+pull (Pull p _) = p
 
 push :: Push m ctx a -> ctx -> a -> m ()
 push (Push p) = p

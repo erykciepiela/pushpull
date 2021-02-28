@@ -2,6 +2,14 @@ module PushPull.Primitives
   ( Push
   , Pull
   , Cell
+  , PushPull.Model.right
+  , PushPull.Model.left
+  , pureRight
+  , unright
+  , PushPull.Model.first
+  , pureFirst
+  , PushPull.Model.second
+  , unfirst
   , get
   , put
   , Exception
@@ -32,6 +40,7 @@ import Prelude hiding (read, id, (.), map, fail)
 
 import PushPull.Model
 import PushPull.STMExtras
+import Control.Arrow
 
 -- Push
 
@@ -94,4 +103,4 @@ bar = arr
 
 -- TODO name?
 baz :: Monad m => Pull m ctx a -> Pull m (ctx, d) (a, d)
-baz = first
+baz = Control.Arrow.first

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 2f54f9a4588dac8f49eed70cf5d65b6be576213a6f6902f775ed7667f0ed1149
+-- hash: f52971da6fe09b9de909d973837d74645bb943a226cffcf784a4f90177e55dba
 
 name:           pushpull
 version:        0.1.0.0
@@ -30,6 +30,7 @@ library
       PushPull.Business
       PushPull.Combinators
       PushPull.Example
+      PushPull.FormExample
       PushPull.Model
       PushPull.Primitives
       PushPull.STMExtras
@@ -42,10 +43,12 @@ library
       base >=4.7 && <5
     , contravariant
     , distributive
+    , either
     , profunctors
     , semigroupoids
     , stm
     , time
+    , transformers
   default-language: Haskell2010
 
 executable pushpull-exe
@@ -60,11 +63,13 @@ executable pushpull-exe
       base >=4.7 && <5
     , contravariant
     , distributive
+    , either
     , profunctors
     , pushpull
     , semigroupoids
     , stm
     , time
+    , transformers
   default-language: Haskell2010
 
 test-suite pushpull-test
@@ -80,9 +85,11 @@ test-suite pushpull-test
       base >=4.7 && <5
     , contravariant
     , distributive
+    , either
     , profunctors
     , pushpull
     , semigroupoids
     , stm
     , time
+    , transformers
   default-language: Haskell2010

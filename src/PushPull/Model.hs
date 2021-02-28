@@ -4,6 +4,14 @@ module PushPull.Model
   , Cell
   , get
   , put
+  , PushPull.Model.right
+  , pureRight
+  , pureFirst
+  , PushPull.Model.unright
+  , PushPull.Model.left
+  , PushPull.Model.first
+  , PushPull.Model.unfirst
+  , PushPull.Model.second
   , cell
   , send
   , push
@@ -20,7 +28,6 @@ module PushPull.Model
   , module Control.Exception.Base
   , module Control.Concurrent.STM
   , module Control.Category
-  , module Control.Arrow
   , module Data.Functor.Contravariant
   , module Data.Functor.Contravariant.Divisible
   ) where
@@ -38,9 +45,16 @@ import Control.Concurrent.STM.TBQueue
 import Control.Exception.Base
 import Control.Category
 import Control.Monad
-import Control.Arrow
+import qualified Control.Arrow as A
 import PushPull.STMExtras
 import Data.Functor
+import Data.Functor.Identity
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Except
+import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Reader
+import Control.Monad.Trans.Writer
+import Data.Either.Combinators
 
 -- Pull - reads state in monadic way
 -- variables, constants, context and derivations thereof, nouns
@@ -51,6 +65,43 @@ data Pull m ctx a = Pull (ctx -> m a) (ctx -> m [String])
 
 pullRoots :: Pull m ctx a -> ctx -> m [String]
 pullRoots (Pull _ roots) = roots
+
+-- if m is a monad then (m (Either e a)) is a monad in a
+right :: Pull m ctx (Either e a) -> Pull (ExceptT e m) ctx a
+right (Pull p roots) = Pull (ExceptT . p) undefined
+
+pureRight :: Functor m => Pull m ctx a -> Pull (ExceptT e m) ctx a
+pureRight p = right $ Right <$> p
+
+left :: Functor m => Pull m ctx (Either a b) -> Pull (MaybeT m) ctx a
+left e = just $ leftToMaybe <$> e
+
+unright :: Pull (ExceptT e m) ctx a -> Pull m ctx (Either e a)
+unright (Pull p roots) = Pull (runExceptT . p) undefined
+
+-- if m is a monad then (m (Maybe a)) is a monad in a
+just :: Pull m ctx (Maybe a) -> Pull (MaybeT m) ctx a
+just (Pull p roots) = Pull (MaybeT . p) undefined
+
+pureJust :: Functor m => Pull m ctx a -> Pull (MaybeT m) ctx a
+pureJust p = just $ Just <$> p
+
+unjust :: Pull (MaybeT m) ctx a -> Pull m ctx (Maybe a)
+unjust (Pull p roots) = Pull (runMaybeT . p) undefined
+
+-- if m is a monad and w is a monoid then m (a, w) is a monad in a
+first :: Pull m ctx (a, w) -> Pull (WriterT w m) ctx a
+first (Pull p roots) = Pull (WriterT . p) undefined
+
+pureFirst :: (Functor m, Monoid w) => Pull m ctx a -> Pull (WriterT w m) ctx a
+pureFirst p = first $ (\a -> (a, mempty)) <$> p
+
+second :: Functor m => Pull m ctx (a, w) -> Pull m ctx w
+second (Pull p roots) = Pull (fmap snd . p) undefined
+
+unfirst :: Pull (WriterT w m) ctx a -> Pull m ctx (a, w)
+unfirst (Pull p roots) = Pull (runWriterT . p) undefined
+
 instance Monad m => Category (Pull m) where
   id = Pull return (const $ return [])
   Pull pull2 roots2 . Pull pull1 roots1 = Pull (pull1 >=> pull2) (\c -> do
@@ -61,7 +112,7 @@ instance Functor m => Profunctor (Pull m) where
   rmap f (Pull pull roots) = Pull (fmap f <$> pull) roots
   lmap f (Pull pull roots) = Pull (pull . f) (roots . f)
 
-instance Monad m => Arrow (Pull m) where
+instance Monad m => A.Arrow (Pull m) where
   arr f = Pull (pure . f) (const $ return [])
   first (Pull pull roots) = Pull (\(c, d) -> (,) <$> pull c <*> pure d) (\(c, d) -> roots c)
 
@@ -85,14 +136,16 @@ instance Monad m => Monad (Pull m ctx) where
 -- "specify the dynamic behavior of an occurence completely at the time of declaration"
 -- values occuring in time, events, ephemeral, happening, discrete
 
-newtype Push m ctx a = Push (ctx -> a -> m [String])
+type Failure = String
+
+newtype Push m ctx a = Push (ctx -> a -> m ([Failure], [String]))
 
 instance Contravariant (Push m ctx) where
   contramap f (Push p) = Push $ \c -> p c . f
 
 instance Applicative m => Divisible (Push m ctx) where
   divide f (Push p1) (Push p2) = Push $ \c a -> let (b1, b2) = f a in (<>) <$> p1 c b1 <*> p2 c b2
-  conquer = Push $ const $ const $ pure []
+  conquer = Push $ const $ const $ pure ([], [])
 
 instance Applicative m => Decidable (Push m ctx) where
   choose f (Push p1) (Push p2) = Push $ \c -> either (p1 c) (p2 c) . f
@@ -104,20 +157,28 @@ instance Applicative m => Semigroup (Push m ctx a) where
 instance Applicative m => Monoid (Push m ctx a) where
   mempty = conquer
 
+fail :: Applicative m => Push m ctx Failure
+fail = Push $ const $ \f -> pure ([f], [])
+
+validate :: Applicative m => (a -> Either Failure b) -> Push m ctx b -> Push m ctx a
+validate f = choose f PushPull.Model.fail
+
+guard :: Applicative m => (a -> Bool) -> Push m ctx a -> Push m ctx a
+guard f = undefined -- choose f PushPull.Model.fail
+
 data Cell m a = Cell {
   cellName :: String,
   put :: forall ctx . Push m ctx a,
   get :: forall ctx . Pull m ctx a
 }
 
-
 -- non-trivial contructors
 
 cell :: Applicative m => String -> (a -> m ()) -> m a -> Cell m a
-cell name put get = Cell name (Push $ const $ \a -> put a $> [name]) (Pull (const get) (const $ pure [name]))
+cell name put get = Cell name (Push $ const $ \a -> put a $> ([], [name])) (Pull (const get) (const $ pure [name]))
 
 send :: Functor m => (a -> m ()) -> Push m ctx a
-send am = Push $ const $ \a -> am a $> []
+send am = Push $ const $ \a -> am a $> ([], [])
 
 -- Push/Pull coupling
 
@@ -154,7 +215,7 @@ read' (Pull pull _) (Push push) = Push $ \c a -> do
 pull :: Pull m ctx a -> ctx -> m a
 pull (Pull p _) = p
 
-push :: Push m ctx a -> ctx -> a -> m [String]
+push :: Push m ctx a -> ctx -> a -> m ([Failure], [String])
 push (Push p) = p
 
 -- fail :: Exception e => Push m ctx e

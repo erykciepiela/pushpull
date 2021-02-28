@@ -32,6 +32,8 @@ dependencies:
 - profunctors
 - semigroupoids
 - distributive
+- transformers
+- either
 
 library:
   source-dirs: src

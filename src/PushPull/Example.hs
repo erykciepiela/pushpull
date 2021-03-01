@@ -10,6 +10,7 @@ import Control.Monad
 import Data.Time
 
 import Data.IORef
+import Control.Monad.Trans.Reader
 
 data Person = Person {
   personId :: Int,
@@ -43,15 +44,12 @@ main = do
     currentPersonId = contextCurrentPersonId <$> context
     currentTime = contextTime <$> context
     aPerson = Person <$> get aPersonId <*> get aactualName <*> get aLastName
-    aPersonCaption = (\currentPersonId person quota -> (if personId person == currentPersonId then "Me" else personactualName person) <> show quota)  <$> currentPersonId <*> aPerson <*> quota
+    aPersonCaption = (\currentPersonId person quota -> (if personId person == currentPersonId then "Me" else personactualName person) <> show quota)  <$> currentPersonId <*> lifted aPerson <*> quota
     -- pushes / events
-    timestampedNotification = enrich currentTime (\s t -> show t <> ": " <> show s) $ send notification
-    personNameUpdate = fork (put aactualName) timestampedNotification
-    validPersonNameUpdate = enrich aPerson (,) $ routeIf (isPersonValid . snd) (map fst personNameUpdate) ignore
+    timestampedNotification = enrich currentTime (\s t -> show t <> ": " <> show s) $ liftPush $ send notification
+    personNameUpdate = fork (liftPush $ put aactualName) timestampedNotification
+    validPersonNameUpdate = enrich (lifted aPerson) (,) $ routeIf (isPersonValid . snd) (map fst personNameUpdate) ignore
   t <- getCurrentTime
-  pull aPersonCaption (Context 1 t) >>= print
-  pushedRoots <- push validPersonNameUpdate (Context 1 t) "James"
-  print pushedRoots
-  pulledRoots <- pullRoots aPersonCaption (Context 1 t)
-  print pulledRoots
+  -- pull aPersonCaption >>= print
+  -- pushedRoots <- push validPersonNameUpdate (Context 1 t) "James"
   return ()

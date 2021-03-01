@@ -6,6 +6,7 @@ module PushPull.Model
   , put
   , PushPull.Model.right
   , lifted
+  , liftPush
   , PushPull.Model.unright
   , PushPull.Model.left
   , PushPull.Model.actual
@@ -16,7 +17,7 @@ module PushPull.Model
   , send
   , push
   , pull
-  , pullRoots
+  , context
   -- , pushIn
   -- , pushOut
   -- , pullIn
@@ -53,77 +54,62 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Reader
-import Control.Monad.Trans.Writer
+import Control.Monad.Trans.Reader
 import Data.Either.Combinators
+import Control.Monad.Trans.Writer
 
 -- Pull - reads state in monadic way
 -- variables, constants, context and derivations thereof, nouns
 -- "specify the dynamic behavior of a value completely at the time of declaration"
 -- values changing in time, entities, always available, lasting, continuous
 
-data Pull m ctx a = Pull (ctx -> m a) (ctx -> m [String])
+newtype Pull m a = Pull (m a)
 
-pullRoots :: Pull m ctx a -> ctx -> m [String]
-pullRoots (Pull _ roots) = roots
+context :: Monad m => Pull (ReaderT ctx m) ctx
+context = Pull (ReaderT return)
 
-lifted :: (MonadTrans t, Monad m) => Pull m ctx a -> Pull (t m) ctx a
-lifted (Pull p _) = Pull (lift . p) undefined
+lifted :: (MonadTrans t, Monad m) => Pull m a -> Pull (t m) a
+lifted (Pull p) = Pull (lift p)
 
 -- if m is a monad then (m (Either e a)) is a monad in a
-right :: Pull m ctx (Either e a) -> Pull (ExceptT e m) ctx a
-right (Pull p roots) = Pull (ExceptT . p) undefined
+right :: Pull m (Either e a) -> Pull (ExceptT e m) a
+right (Pull p) = Pull (ExceptT p)
 
-left :: Functor m => Pull m ctx (Either a b) -> Pull (MaybeT m) ctx a
+left :: Functor m => Pull m (Either a b) -> Pull (MaybeT m) a
 left e = existing $ leftToMaybe <$> e
 
-unright :: Pull (ExceptT e m) ctx a -> Pull m ctx (Either e a)
-unright (Pull p roots) = Pull (runExceptT . p) undefined
+unright :: Pull (ExceptT e m) a -> Pull m (Either e a)
+unright (Pull p) = Pull (runExceptT p)
 
 -- if m is a monad then (m (Maybe a)) is a monad in a
-existing :: Pull m ctx (Maybe a) -> Pull (MaybeT m) ctx a
-existing (Pull p roots) = Pull (MaybeT . p) undefined
+existing :: Pull m (Maybe a) -> Pull (MaybeT m) a
+existing (Pull p) = Pull (MaybeT p)
 
-unexisting :: Pull (MaybeT m) ctx a -> Pull m ctx (Maybe a)
-unexisting (Pull p roots) = Pull (runMaybeT . p) undefined
+unexisting :: Pull (MaybeT m) a -> Pull m (Maybe a)
+unexisting (Pull p) = Pull (runMaybeT p)
 
 -- if m is a monad and w is a monoid then m (a, w) is a monad in a
-actual :: Pull m ctx (a, w) -> Pull (WriterT w m) ctx a
-actual (Pull p roots) = Pull (WriterT . p) undefined
+actual :: Pull m (a, w) -> Pull (WriterT w m) a
+actual (Pull p) = Pull (WriterT p)
 
-second :: Functor m => Pull m ctx (a, w) -> Pull m ctx w
-second (Pull p roots) = Pull (fmap snd . p) undefined
+second :: Functor m => Pull m (a, w) -> Pull m w
+second (Pull p) = Pull (fmap snd p)
 
-unactual :: Pull (WriterT w m) ctx a -> Pull m ctx (a, w)
-unactual (Pull p roots) = Pull (runWriterT . p) undefined
+unactual :: Pull (WriterT w m) a -> Pull m (a, w)
+unactual (Pull p) = Pull (runWriterT p)
 
-instance Monad m => Category (Pull m) where
-  id = Pull return (const $ return [])
-  Pull pull2 roots2 . Pull pull1 roots1 = Pull (pull1 >=> pull2) (\c -> do
-    c' <- pull1 c
-    (<>) <$> roots2 c' <*> roots1 c)
+instance Functor m => Functor (Pull m) where
+  fmap f (Pull p)= Pull $ f <$> p
 
-instance Functor m => Profunctor (Pull m) where
-  rmap f (Pull pull roots) = Pull (fmap f <$> pull) roots
-  lmap f (Pull pull roots) = Pull (pull . f) (roots . f)
+instance Applicative m => Applicative (Pull m) where
+  pure = Pull . pure
+  Pull f <*> Pull a = Pull $ f <*> a
 
-instance Monad m => A.Arrow (Pull m) where
-  arr f = Pull (pure . f) (const $ return [])
-  first (Pull pull roots) = Pull (\(c, d) -> (,) <$> pull c <*> pure d) (\(c, d) -> roots c)
-
-instance Functor m => Functor (Pull m ctx) where
-  fmap = rmap
-
-instance Applicative m => Applicative (Pull m ctx) where
-  pure a = Pull (const $ pure a) (const $ pure [])
-  Pull f rootsf <*> Pull a rootsa = Pull (\c -> f c <*> a c) (\c -> (<>) <$> rootsf c <*> rootsa c)
-
-instance Monad m => Monad (Pull m ctx) where
+instance Monad m => Monad (Pull m) where
   return = pure
-  (Pull pull1 roots1) >>= f = Pull (\c -> do
-    Pull pull2 roots2 <- f <$> pull1 c
-    pull2 c) (\c -> do
-      Pull pull2 roots2 <- f <$> pull1 c
-      (<>) <$> roots1 c <*> roots2 c)
+  (Pull pull1) >>= f = Pull $ do
+    Pull pull2 <- f <$> pull1
+    pull2
 
 -- Push - reads and writes state and enqueues values in contravariant/divisible/decidable way
 -- pulls, updates, enqueues, verbs, commands
@@ -160,54 +146,57 @@ validate f = choose f PushPull.Model.fail
 guard :: Applicative m => (a -> Bool) -> Push m ctx a -> Push m ctx a
 guard f = undefined -- choose f PushPull.Model.fail
 
+liftPush :: (MonadTrans t, Monad m) => Push m ctx a -> Push (t m) ctx a
+liftPush (Push p) = Push $ \ctx s -> lift (p ctx s)
+
 data Cell m a = Cell {
   cellName :: String,
   put :: forall ctx . Push m ctx a,
-  get :: forall ctx . Pull m ctx a
+  get :: forall ctx . Pull m a
 }
 
 -- non-trivial contructors
 
 cell :: Applicative m => String -> (a -> m ()) -> m a -> Cell m a
-cell name put get = Cell name (Push $ const $ \a -> put a $> ([], [name])) (Pull (const get) (const $ pure [name]))
+cell name put get = Cell name (Push $ const $ \a -> put a $> ([], [name])) (Pull get)
 
 send :: Functor m => (a -> m ()) -> Push m ctx a
 send am = Push $ const $ \a -> am a $> ([], [])
 
 -- Push/Pull coupling
 
-enrich :: Monad m => Pull m ctx b -> (a -> b -> c) -> Push m ctx c -> Push m ctx a
-enrich (Pull pull _) f (Push push) = Push $ \c a -> (do
-  b <- pull c
+enrich :: Monad m => Pull m b -> (a -> b -> c) -> Push m ctx c -> Push m ctx a
+enrich (Pull pull) f (Push push) = Push $ \c a -> (do
+  b <- pull
   push c $ f a b)
 
-enrich' :: Monad m => (a -> Pull m ctx b) -> (a -> b -> c) -> Push m ctx c -> Push m ctx a
+enrich' :: Monad m => (a -> Pull m b) -> (a -> b -> c) -> Push m ctx c -> Push m ctx a
 enrich' s f (Push push) = Push $ \c a -> do
-  let (Pull pull _) = s a
-  b <- pull c
+  let (Pull pull) = s a
+  b <- pull
   push c $ f a b
 
-enrich'' :: Monad m => (a -> Pull m ctx b) -> Push m ctx b -> Push m ctx a
+enrich'' :: Monad m => (a -> Pull m b) -> Push m ctx b -> Push m ctx a
 enrich'' s (Push push) = Push $ \c a -> do
-  let (Pull pull _) = s a
-  b <- pull c
+  let (Pull pull) = s a
+  b <- pull
   push c b
 
-enrich''' :: Monad m => Pull m ctx b -> Push m ctx b -> Push m ctx a
-enrich''' (Pull pull _) (Push push) = Push $ \c a -> do
-  b <- pull c
+enrich''' :: Monad m => Pull m b -> Push m ctx b -> Push m ctx a
+enrich''' (Pull pull) (Push push) = Push $ \c a -> do
+  b <- pull
   push c b
 
 
-read' :: Monad m => Pull m ctx a -> Push m ctx a -> Push m ctx b
-read' (Pull pull _) (Push push) = Push $ \c a -> do
-  a <- pull c
+read' :: Monad m => Pull m a -> Push m ctx a -> Push m ctx b
+read' (Pull pull) (Push push) = Push $ \c a -> do
+  a <- pull
   push c a
 
 -- I/O, failures
 
-pull :: Pull m ctx a -> ctx -> m a
-pull (Pull p _) = p
+pull :: Pull m a -> m a
+pull (Pull p) = p
 
 push :: Push m ctx a -> ctx -> a -> m ([Failure], [String])
 push (Push p) = p

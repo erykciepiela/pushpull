@@ -74,13 +74,13 @@ main = do
     foo = undefined <$> person <*> lifted (lifted age)
     a = existing $ month <$> existing (readMaybe @Int <$> get monthCell)
     -- pushes / events
-  pull (unright (unright (unactual person))) () >>= print
+  pull (unright (unright (unactual person))) >>= print
   push (put ageCell) () 1
-  pull (unright (unright (unactual person))) () >>= print
+  pull (unright (unright (unactual person))) >>= print
   push (put nameCell) () "Konstantynopolitanka"
-  pull (unright (unright (unactual person))) () >>= print
+  pull (unright (unright (unactual person))) >>= print
   push (put nameCell) () "Kostek"
-  pull (unright (unright (unactual person))) () >>= print
+  pull (unright (unright (unactual person))) >>= print
   -- pushedRoots <- push validPersonNameUpdate (Context 1 t) "James"
   -- print pushedRoots
   -- pulledRoots <- pullRoots aPersonCaption (Context 1 t)

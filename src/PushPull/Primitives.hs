@@ -5,9 +5,11 @@ module PushPull.Primitives
   , PushPull.Model.right
   , PushPull.Model.left
   , lifted
+  , liftPush
   , unright
   , PushPull.Model.actual
   , PushPull.Model.second
+  , PushPull.Model.context
   , unactual
   , existing
   , get
@@ -18,7 +20,6 @@ module PushPull.Primitives
   , send
   , push
   , pull
-  , pullRoots
   , map
   , split
   , ignore
@@ -28,7 +29,6 @@ module PushPull.Primitives
   , combination
   , constant
   , selection
-  , context
   , enrich
   -- , fail
   -- , failure
@@ -41,6 +41,7 @@ import Prelude hiding (read, id, (.), map, fail)
 import PushPull.Model
 import PushPull.STMExtras
 import Control.Arrow
+import Control.Monad.Trans.Reader
 
 -- Push
 
@@ -69,38 +70,35 @@ forkN = mconcat
 
 -- Pull
 
-sequence' :: (Applicative m, Traversable t) => t (Pull m ctx a) -> Pull m ctx (t a)
+sequence' :: (Applicative m, Traversable t) => t (Pull m a) -> Pull m (t a)
 sequence' = sequenceA
 
 -- TODO: smell, the same as in Push's map
-mapping :: Functor m => Pull m ctx a -> (a -> b) -> Pull m ctx b
+mapping :: Functor m => Pull m a -> (a -> b) -> Pull m b
 mapping = flip fmap
 
-combination :: Applicative m => Pull m ctx a -> Pull m ctx b -> (a -> b -> c) -> Pull m ctx c
+combination :: Applicative m => Pull m a -> Pull m b -> (a -> b -> c) -> Pull m c
 combination p1 p2 f = f <$> p1 <*> p2
 
 -- identity to combination: combination f constant p ~= p
 -- identity to selection: p `selection` constant = p
-constant :: Applicative m => a -> Pull m ctx a
+constant :: Applicative m => a -> Pull m a
 constant = pure
 
-selection :: Monad m => Pull m ctx a -> (a -> Pull m ctx b) -> Pull m ctx b -- 2
+selection :: Monad m => Pull m a -> (a -> Pull m b) -> Pull m b -- 2
 selection = (>>=)
 
-context :: Monad m => Pull m ctx ctx
-context = id
+-- fromContext :: Monad m => (ctx -> a) -> Pull m a
+-- fromContext = arr
 
-fromContext :: Monad m => (ctx -> a) -> Pull m ctx a
-fromContext = arr
+-- -- TODO name?
+-- foo :: Monad m => Pull m ctx' -> Pull m' a -> Pull m a
+-- foo = (>>>)
 
--- TODO name?
-foo :: Monad m => Pull m ctx ctx' -> Pull m ctx' a -> Pull m ctx a
-foo = (>>>)
-
--- TODO name?
-bar :: Monad m => (ctx -> a) -> Pull m ctx a
-bar = arr
+-- -- TODO name?
+-- bar :: Monad m => (ctx -> a) -> Pull m a
+-- bar = arr
 
 -- TODO name?
-baz :: Monad m => Pull m ctx a -> Pull m (ctx, d) (a, d)
-baz = Control.Arrow.first
+-- baz :: Monad m => Pull m a -> Pull m (ctx, d) (a, d)
+-- baz = Control.Arrow.first

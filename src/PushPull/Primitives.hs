@@ -4,12 +4,12 @@ module PushPull.Primitives
   , Cell
   , PushPull.Model.right
   , PushPull.Model.left
-  , pureRight
+  , lifted
   , unright
-  , PushPull.Model.first
-  , pureFirst
+  , PushPull.Model.actual
   , PushPull.Model.second
-  , unfirst
+  , unactual
+  , existing
   , get
   , put
   , Exception

@@ -12,6 +12,7 @@ import Data.Time
 import Data.IORef
 import Control.Monad.Trans.Except
 import Data.Either.Combinators
+import Text.Read hiding (get)
 
 newtype PositiveInt = PositiveInt Int deriving Show
 
@@ -67,18 +68,19 @@ main = do
     ageError = left $ positiveInt <$> get ageCell
     name = right $ nonEmptyString <$> get nameCell
     nameError = left $ nonEmptyString <$> get nameCell
-    person = first $ right $ mkPerson <$> age <*> name <*> pureRight (get noteCell)
-    personError = left $ mkPerson <$> age <*> name <*> pureRight (get noteCell)
-    personLog = second $ right $ mkPerson <$> age <*> name <*> pureRight (get noteCell)
-    foo = undefined <$> person <*> pure 5
+    person = actual $ right $ mkPerson <$> age <*> name <*> lifted (get noteCell)
+    personError = left $ mkPerson <$> age <*> name <*> lifted (get noteCell)
+    personLog = second $ right $ mkPerson <$> age <*> name <*> lifted (get noteCell)
+    foo = undefined <$> person <*> lifted (lifted age)
+    a = existing $ month <$> existing (readMaybe @Int <$> get monthCell)
     -- pushes / events
-  pull (unright (unright (unfirst person))) () >>= print
+  pull (unright (unright (unactual person))) () >>= print
   push (put ageCell) () 1
-  pull (unright (unright (unfirst person))) () >>= print
+  pull (unright (unright (unactual person))) () >>= print
   push (put nameCell) () "Konstantynopolitanka"
-  pull (unright (unright (unfirst person))) () >>= print
+  pull (unright (unright (unactual person))) () >>= print
   push (put nameCell) () "Kostek"
-  pull (unright (unright (unfirst person))) () >>= print
+  pull (unright (unright (unactual person))) () >>= print
   -- pushedRoots <- push validPersonNameUpdate (Context 1 t) "James"
   -- print pushedRoots
   -- pulledRoots <- pullRoots aPersonCaption (Context 1 t)

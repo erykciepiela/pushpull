@@ -5,13 +5,13 @@ module PushPull.Model
   , get
   , put
   , PushPull.Model.right
-  , pureRight
-  , pureFirst
+  , lifted
   , PushPull.Model.unright
   , PushPull.Model.left
-  , PushPull.Model.first
-  , PushPull.Model.unfirst
+  , PushPull.Model.actual
+  , PushPull.Model.unactual
   , PushPull.Model.second
+  , existing
   , cell
   , send
   , push
@@ -66,41 +66,35 @@ data Pull m ctx a = Pull (ctx -> m a) (ctx -> m [String])
 pullRoots :: Pull m ctx a -> ctx -> m [String]
 pullRoots (Pull _ roots) = roots
 
+lifted :: (MonadTrans t, Monad m) => Pull m ctx a -> Pull (t m) ctx a
+lifted (Pull p _) = Pull (lift . p) undefined
+
 -- if m is a monad then (m (Either e a)) is a monad in a
 right :: Pull m ctx (Either e a) -> Pull (ExceptT e m) ctx a
 right (Pull p roots) = Pull (ExceptT . p) undefined
 
-pureRight :: Functor m => Pull m ctx a -> Pull (ExceptT e m) ctx a
-pureRight p = right $ Right <$> p
-
 left :: Functor m => Pull m ctx (Either a b) -> Pull (MaybeT m) ctx a
-left e = just $ leftToMaybe <$> e
+left e = existing $ leftToMaybe <$> e
 
 unright :: Pull (ExceptT e m) ctx a -> Pull m ctx (Either e a)
 unright (Pull p roots) = Pull (runExceptT . p) undefined
 
 -- if m is a monad then (m (Maybe a)) is a monad in a
-just :: Pull m ctx (Maybe a) -> Pull (MaybeT m) ctx a
-just (Pull p roots) = Pull (MaybeT . p) undefined
+existing :: Pull m ctx (Maybe a) -> Pull (MaybeT m) ctx a
+existing (Pull p roots) = Pull (MaybeT . p) undefined
 
-pureJust :: Functor m => Pull m ctx a -> Pull (MaybeT m) ctx a
-pureJust p = just $ Just <$> p
-
-unjust :: Pull (MaybeT m) ctx a -> Pull m ctx (Maybe a)
-unjust (Pull p roots) = Pull (runMaybeT . p) undefined
+unexisting :: Pull (MaybeT m) ctx a -> Pull m ctx (Maybe a)
+unexisting (Pull p roots) = Pull (runMaybeT . p) undefined
 
 -- if m is a monad and w is a monoid then m (a, w) is a monad in a
-first :: Pull m ctx (a, w) -> Pull (WriterT w m) ctx a
-first (Pull p roots) = Pull (WriterT . p) undefined
-
-pureFirst :: (Functor m, Monoid w) => Pull m ctx a -> Pull (WriterT w m) ctx a
-pureFirst p = first $ (\a -> (a, mempty)) <$> p
+actual :: Pull m ctx (a, w) -> Pull (WriterT w m) ctx a
+actual (Pull p roots) = Pull (WriterT . p) undefined
 
 second :: Functor m => Pull m ctx (a, w) -> Pull m ctx w
 second (Pull p roots) = Pull (fmap snd . p) undefined
 
-unfirst :: Pull (WriterT w m) ctx a -> Pull m ctx (a, w)
-unfirst (Pull p roots) = Pull (runWriterT . p) undefined
+unactual :: Pull (WriterT w m) ctx a -> Pull m ctx (a, w)
+unactual (Pull p roots) = Pull (runWriterT . p) undefined
 
 instance Monad m => Category (Pull m) where
   id = Pull return (const $ return [])

@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: f52971da6fe09b9de909d973837d74645bb943a226cffcf784a4f90177e55dba
+-- hash: c65860eb26ca6a6ebe4c24c117947e64a3afc6aba268a9291f62ee34a5be44f8
 
 name:           pushpull
 version:        0.1.0.0
@@ -30,6 +30,7 @@ library
       PushPull.Business
       PushPull.Combinators
       PushPull.Example
+      PushPull.Form
       PushPull.FormExample
       PushPull.Model
       PushPull.Primitives
@@ -38,12 +39,18 @@ library
       Paths_pushpull
   hs-source-dirs:
       src
-  default-extensions: RankNTypes TypeApplications DeriveAnyClass
+  default-extensions:
+      RankNTypes
+      TypeApplications
+      DeriveAnyClass
+      FlexibleInstances
+      MultiParamTypeClasses
   build-depends:
       base >=4.7 && <5
     , contravariant
     , distributive
     , either
+    , mtl
     , profunctors
     , semigroupoids
     , stm
@@ -57,13 +64,19 @@ executable pushpull-exe
       Paths_pushpull
   hs-source-dirs:
       app
-  default-extensions: RankNTypes TypeApplications DeriveAnyClass
+  default-extensions:
+      RankNTypes
+      TypeApplications
+      DeriveAnyClass
+      FlexibleInstances
+      MultiParamTypeClasses
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
     , contravariant
     , distributive
     , either
+    , mtl
     , profunctors
     , pushpull
     , semigroupoids
@@ -79,13 +92,19 @@ test-suite pushpull-test
       Paths_pushpull
   hs-source-dirs:
       test
-  default-extensions: RankNTypes TypeApplications DeriveAnyClass
+  default-extensions:
+      RankNTypes
+      TypeApplications
+      DeriveAnyClass
+      FlexibleInstances
+      MultiParamTypeClasses
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
     , contravariant
     , distributive
     , either
+    , mtl
     , profunctors
     , pushpull
     , semigroupoids

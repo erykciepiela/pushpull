@@ -2,16 +2,9 @@ module PushPull.Primitives
   ( Push
   , Pull
   , Cell
-  , PushPull.Model.right
-  , PushPull.Model.left
   , lifted
+  , liftedIO
   , liftPush
-  , unright
-  , PushPull.Model.actual
-  , PushPull.Model.second
-  , PushPull.Model.context
-  , unactual
-  , existing
   , get
   , put
   , Exception
@@ -19,7 +12,6 @@ module PushPull.Primitives
   , cell
   , send
   , push
-  , pull
   , map
   , split
   , ignore
@@ -29,9 +21,6 @@ module PushPull.Primitives
   , combination
   , constant
   , selection
-  , enrich
-  -- , fail
-  -- , failure
   , fork
   , forkN
 ) where
@@ -45,27 +34,27 @@ import Control.Monad.Trans.Reader
 
 -- Push
 
-map :: (b -> a) -> Push m ctx a -> Push m ctx b
+map :: (b -> a) -> Push m a -> Push m b
 map = contramap
 
-split :: Applicative m => (a -> (b, c)) -> Push m ctx b -> Push m ctx c -> Push m ctx a
+split :: Applicative m => (a -> (b, c)) -> Push m b -> Push m c -> Push m a
 split = divide
 
 -- identity for split: split f ignore p ~= p
-ignore :: Applicative m => Push m ctx a
+ignore :: Applicative m => Push m a
 ignore = conquer
 
-route :: Applicative m => (a -> Either b c) -> Push m ctx b -> Push m ctx c -> Push m ctx a
+route :: Applicative m => (a -> Either b c) -> Push m b -> Push m c -> Push m a
 route = choose
 
 -- identity to route: route f unreach p ~= p
-unreach :: Applicative m => Push m ctx Void
+unreach :: Applicative m => Push m Void
 unreach = lose id
 
-fork :: Applicative m => Push m ctx a -> Push m ctx a -> Push m ctx a
+fork :: Applicative m => Push m a -> Push m a -> Push m a
 fork = mappend
 
-forkN :: Applicative m => [Push m ctx a] -> Push m ctx a
+forkN :: Applicative m => [Push m a] -> Push m a
 forkN = mconcat
 
 -- Pull

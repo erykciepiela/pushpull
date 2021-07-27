@@ -40,15 +40,15 @@ main = do
     aactualName = cell "aactualName" (writeIORef actualNameVar) (readIORef actualNameVar)
     aLastName = cell "aLastName" (writeIORef lastNameVar) (readIORef lastNameVar)
     -- pulls / entities
-    quota = constant 100
-    currentPersonId = contextCurrentPersonId <$> context
-    currentTime = contextTime <$> context
-    aPerson = Person <$> get aPersonId <*> get aactualName <*> get aLastName
-    aPersonCaption = (\currentPersonId person quota -> (if personId person == currentPersonId then "Me" else personactualName person) <> show quota)  <$> currentPersonId <*> lifted aPerson <*> quota
+    -- quota = constant 100
+    -- currentPersonId = contextCurrentPersonId <$> context
+    -- currentTime = contextTime <$> context
+    -- aPerson = Person <$> get aPersonId <*> get aactualName <*> get aLastName
+    -- aPersonCaption = (\currentPersonId person quota -> (if personId person == currentPersonId then "Me" else personactualName person) <> show quota)  <$> currentPersonId <*> aPerson <*> quota
     -- pushes / events
-    timestampedNotification = enrich currentTime (\s t -> show t <> ": " <> show s) $ liftPush $ send notification
-    personNameUpdate = fork (liftPush $ put aactualName) timestampedNotification
-    validPersonNameUpdate = enrich (lifted aPerson) (,) $ routeIf (isPersonValid . snd) (map fst personNameUpdate) ignore
+    -- timestampedNotification = enrich currentTime (\s t -> show t <> ": " <> show s) $ liftPush $ send notification
+    -- personNameUpdate = fork (liftPush $ put aactualName) timestampedNotification
+    -- validPersonNameUpdate = enrich (lifted aPerson) (,) $ routeIf (isPersonValid . snd) (map fst personNameUpdate) ignore
   t <- getCurrentTime
   -- pull aPersonCaption >>= print
   -- pushedRoots <- push validPersonNameUpdate (Context 1 t) "James"

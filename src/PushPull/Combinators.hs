@@ -7,25 +7,25 @@ import Control.Concurrent.STM.TVar
 
 -- Push
 
-select :: Applicative m => (a -> Maybe b) -> Push m ctx b -> Push m ctx a -- TODO: smell, cannot find proper name
+select :: Applicative m => (a -> Maybe b) -> Push m b -> Push m a -- TODO: smell, cannot find proper name
 select f = route (maybe (Left ()) Right . f) ignore
 
-routeIf :: Applicative m => (a -> Bool) -> Push m ctx a -> Push m ctx a -> Push m ctx a
+routeIf :: Applicative m => (a -> Bool) -> Push m a -> Push m a -> Push m a
 routeIf f = route (\a -> (if f a then Left else Right) a)
 
-forkIf :: Applicative m => (a -> Bool) -> Push m ctx a -> Push m ctx a -> Push m ctx a -- should rely on fork not on split, as name suggests
+forkIf :: Applicative m => (a -> Bool) -> Push m a -> Push m a -> Push m a -- should rely on fork not on split, as name suggests
 forkIf f thenPush = split (\a -> (if f a then Just a else Nothing, a)) (select id thenPush)
 
-retain :: Applicative m => (a -> Bool) -> Push m ctx a -> Push m ctx a
+retain :: Applicative m => (a -> Bool) -> Push m a -> Push m a
 retain f p = routeIf f p ignore
 
-remove :: Applicative m => (a -> Bool) -> Push m ctx a -> Push m ctx a
+remove :: Applicative m => (a -> Bool) -> Push m a -> Push m a
 remove f = retain (not . f)
 
-replace :: a -> Push m ctx a -> Push m ctx b
+replace :: a -> Push m a -> Push m b
 replace a = map (const a)
 
--- validate :: Exception e => (a -> Either e b) -> Push m ctx b -> Push m ctx a
+-- validate :: Exception e => (a -> Either e b) -> Push m b -> Push m a
 -- validate f = route f fail
 
 -- Pull

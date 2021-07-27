@@ -1,6 +1,6 @@
 module PushPull.FormExample where
 
-import Prelude hiding (map)
+import Prelude hiding (map, either)
 
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TVar
@@ -8,16 +8,19 @@ import Control.Concurrent.STM.TQueue
 import PushPull.Business
 import Control.Monad
 import Data.Time
-
 import Data.IORef
 import Control.Monad.Trans.Except
 import Data.Either.Combinators
-import Text.Read hiding (get)
+import Text.Read hiding (get, lift)
+import Data.Maybe
+import PushPull.Form
+import Data.Monoid
+import Control.Monad.Trans
 
 newtype PositiveInt = PositiveInt Int deriving Show
 
-positiveInt :: Int -> Either String PositiveInt
-positiveInt i
+positiveIntOrError :: Int -> Either String PositiveInt
+positiveIntOrError i
   | i > 0 = Right $ PositiveInt i
   | otherwise = Left "must be positive"
 
@@ -26,63 +29,95 @@ getPositiveInt (PositiveInt i) = i
 
 newtype NonEmptyString = NonEmptyString String deriving Show
 
-nonEmptyString :: String -> Either String NonEmptyString
-nonEmptyString s
+nonEmptyStringOrError :: String -> Either String NonEmptyString
+nonEmptyStringOrError s
   | null s = Left "must be non empty"
   | otherwise = Right $ NonEmptyString s
 
 getNonEmptyString :: NonEmptyString -> String
 getNonEmptyString (NonEmptyString s) = s
 
-newtype Month = Month Int deriving Show
+data Title = Mr | Ms deriving Show
 
-month :: Int -> Maybe Month
-month i
-  | i > 0 && i < 13 = Just $ Month i
-  | otherwise = Nothing
+data ShirtSize = S | M | L | XL  deriving Show
 
 data Person = Person {
-  age :: PositiveInt,
-  name :: NonEmptyString,
-  note :: String
+  personAge :: PositiveInt,
+  personName :: NonEmptyString,
+  personTitle :: Title,
+  personShirtSize :: ShirtSize
 } deriving Show
 
-type Log = String
+validPerson :: PositiveInt -> NonEmptyString -> Title -> ShirtSize -> Either String Person
+validPerson age name title shirtSize = if getPositiveInt age < 10 && length (getNonEmptyString name) > 10 then Left "Improper name for a child" else Right (Person age name title shirtSize)
 
-mkPerson :: PositiveInt -> NonEmptyString -> String -> Either String (Person, String)
-mkPerson age name note = if getPositiveInt age < 10 && length (getNonEmptyString name) > 10 then Left "Improper name for a child" else Right (Person age name note, "person 1")
+printConsole :: Show s => Push IO s
+printConsole = send print
+
+data Choices = Choices
+  { shirtSizes :: [ShirtSize]
+  , titles :: [Title]
+  }
 
 main :: IO ()
 main = do
-  -- data
-  ageVar <- newIORef 0
-  nameVar <- newIORef ""
-  let notification = putStrLn
+  ageField <- newFormField
+  nameField <- newFormField
+  titleField <- newFormField
+  shirtSizeField <- newFormField
 
   let
-    ageCell = cell "age" (writeIORef ageVar) (readIORef ageVar)
-    nameCell = cell "name" (writeIORef nameVar) (readIORef nameVar)
-    noteCell = cell "note" (writeIORef nameVar) (readIORef nameVar)
-    monthCell = cell "month" (writeIORef nameVar) (readIORef nameVar)
-    age = right $ positiveInt <$> get ageCell
-    ageError = left $ positiveInt <$> get ageCell
-    name = right $ nonEmptyString <$> get nameCell
-    nameError = left $ nonEmptyString <$> get nameCell
-    person = actual $ right $ mkPerson <$> age <*> name <*> lifted (get noteCell)
-    personError = left $ mkPerson <$> age <*> name <*> lifted (get noteCell)
-    personLog = second $ right $ mkPerson <$> age <*> name <*> lifted (get noteCell)
-    foo = undefined <$> person <*> lifted (lifted age)
-    a = existing $ month <$> existing (readMaybe @Int <$> get monthCell)
-    -- pushes / events
-  pull (unright (unright (unactual person))) >>= print
-  push (put ageCell) () 1
-  pull (unright (unright (unactual person))) >>= print
-  push (put nameCell) () "Konstantynopolitanka"
-  pull (unright (unright (unactual person))) >>= print
-  push (put nameCell) () "Kostek"
-  pull (unright (unright (unactual person))) >>= print
-  -- pushedRoots <- push validPersonNameUpdate (Context 1 t) "James"
-  -- print pushedRoots
-  -- pulledRoots <- pullRoots aPersonCaption (Context 1 t)
-  -- print pulledRoots
+    ageOrError = positiveIntOrError <$> formFieldValue ageField
+    age = justOf $ rightToMaybe <$> ageOrError
+    ageError = justOf $ leftToMaybe <$> ageOrError
+    nameOrError = nonEmptyStringOrError <$> formFieldValue nameField
+    name = justOf $ rightToMaybe <$> nameOrError
+    nameError = justOf $ leftToMaybe <$> nameOrError
+    personOrError = validPerson <$> age <*> name <*> formFieldValue titleField <*> formFieldValue shirtSizeField
+    person = justOf $ rightToMaybe <$> personOrError
+    personError = justOf $ leftToMaybe <$> personOrError
+
+    printForm = displayDynamic (Choices [S, M, L, XL] [Mr, Ms]) $ do
+      lift $ putStrLn "-----"
+      -- putStr "Age: "
+      -- readFormField ageField >>= print
+      whenForm ageError (== Touched) $ \a -> putStrLn ("  invalid age: " <> a)
+
+      -- putStr "Name: "
+      -- readFormField nameField >>= print
+      whenForm nameError (== Touched) $ \a -> putStrLn ("  invalid name: " <> a)
+
+      -- putStr "Note: "
+      -- readFormField noteField >>= print
+      whenForm person (== Touching) $ \a -> putStrLn "person: ..."
+      whenForm person (== Touched) $ \a -> putStrLn ("person: " <> show a)
+
+      whenForm personError (== Touched) $ \a -> putStrLn ("  invalid person: " <> a)
+
+  writeFormField ageField $ const $ Just (0, NotTouched)
+  writeFormField nameField $ const $ Just ("", NotTouched)
+  writeFormField titleField $ \(Choices _ titles) -> Just (titles !! 0, NotTouched)
+  writeFormField shirtSizeField $ \(Choices sizes _) -> Just (sizes !! 0, NotTouched)
+  printForm
+
+  writeFormField ageField $ const $ Just (0, Touched)
+  printForm
+  writeFormField ageField $ const $ Just (5, Touched)
+  printForm
+  writeFormField nameField $ const $ Just ("K", Touching)
+  printForm
+  writeFormField nameField $ const $ Just ("", Touched)
+  printForm
+  writeFormField nameField $ const $ Just ("K", Touching)
+  printForm
+  writeFormField nameField $ const $ Just ("Konstantynopolitanka", Touched)
+  printForm
+  writeFormField nameField $ const $ Just ("Kostek", Touched)
+  printForm
+  writeFormField shirtSizeField $ \(Choices sizes _) -> Just (sizes !! 2, Touched)
+  printForm
+  writeFormField titleField $ \(Choices _ titles) -> Just (titles !! 1, Touched)
+  printForm
+
+
   return ()

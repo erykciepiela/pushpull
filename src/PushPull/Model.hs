@@ -43,7 +43,7 @@ import Control.Monad.Reader.Class
 -- Represents variables, constants, context and derivations thereof, nouns,
 -- values changing in time, entities, continuously lasting values.
 
-newtype Pull m a = Pull { unpull :: m a }
+newtype Pull m a = Pull { pull :: m a }
 
 instance Functor m => Functor (Pull m) where
   fmap f (Pull p)= Pull $ f <$> p
@@ -68,7 +68,7 @@ liftedIO (Pull p) = Pull (liftIO p)
 -- Represents pulls, updates, enqueues, verbs, commands,
 -- values occuring in time, events, ephemeral, happening, discrete values
 
-newtype Push m a = Push (a -> m ())
+newtype Push m a = Push { push :: a -> m () }
 
 instance Contravariant (Push m) where
   contramap f (Push p) = Push $ p . f
@@ -107,13 +107,11 @@ cell name put get = Cell name (Push $ \a -> put a $> ()) (Pull get)
 send :: MonadIO m => (a -> IO ()) -> Push m a
 send am = Push $ \a -> liftIO (am a) $> ()
 
--- example usage of enrich
 read' :: Monad m => Pull m a -> Push m a -> Push m b
 read' (Pull pull) (Push push) = Push $ \a -> do
   a <- pull
   push a
 
--- I/O, failures
+type Foo m a = Push (Pull m) a
 
-push :: a -> Push m a -> m ()
-push a (Push p) = p a
+type Bar m a = Pull (Push m) a

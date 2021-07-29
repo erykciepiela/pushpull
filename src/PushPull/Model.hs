@@ -112,6 +112,5 @@ read' (Pull pull) (Push push) = Push $ \a -> do
   a <- pull
   push a
 
-type Foo m a = Push (Pull m) a
-
-type Bar m a = Pull (Push m) a
+enrich :: Pull m a -> Push m (a, b) -> Push m b
+enrich = undefined

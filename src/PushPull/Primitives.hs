@@ -7,35 +7,29 @@ module PushPull.Primitives
   , liftPush
   , get
   , put
-  , Exception
-  , sequence'
   , cell
-  , send
   , push
-  , map
+  , pmap
   , split
   , ignore
   , route
   , unreach
-  , mapping
-  , combination
-  , constant
-  , selection
   , fork
   , forkN
 ) where
-
-import Prelude hiding (read, id, (.), map, fail)
 
 import PushPull.Model
 import PushPull.STMExtras
 import Control.Arrow
 import Control.Monad.Trans.Reader
+import Data.Void
+import Data.Functor.Contravariant
+import Data.Functor.Contravariant.Divisible
 
--- Push
+-- Basic combinators - aliases to Contravariant/Divisible/Decidable
 
-map :: (b -> a) -> Push m a -> Push m b
-map = contramap
+pmap :: (b -> a) -> Push m a -> Push m b
+pmap = contramap
 
 split :: Applicative m => (a -> (b, c)) -> Push m b -> Push m c -> Push m a
 split = divide
@@ -51,43 +45,22 @@ route = choose
 unreach :: Applicative m => Push m Void
 unreach = lose id
 
+-- Other compinators
+
+replace :: a -> Push m a -> Push m b
+replace a = pmap (const a)
+
 fork :: Applicative m => Push m a -> Push m a -> Push m a
-fork = mappend
+fork = split (\a -> (a, a))
 
-forkN :: Applicative m => [Push m a] -> Push m a
-forkN = mconcat
+forkN :: (Applicative m, Foldable f) => f (Push m a) -> Push m a
+forkN = foldr fork ignore
 
--- Pull
+pfilter :: Applicative m => (a -> Maybe b) -> Push m b -> Push m a
+pfilter f = route (maybe (Left ()) Right . f) ignore
 
-sequence' :: (Applicative m, Traversable t) => t (Pull m a) -> Pull m (t a)
-sequence' = sequenceA
+ignoreWhen :: Applicative m => (a -> Bool) -> Push m a -> Push m a
+ignoreWhen f = pfilter (\a -> if f a then Nothing else Just a)
 
--- TODO: smell, the same as in Push's map
-mapping :: Functor m => Pull m a -> (a -> b) -> Pull m b
-mapping = flip fmap
-
-combination :: Applicative m => Pull m a -> Pull m b -> (a -> b -> c) -> Pull m c
-combination p1 p2 f = f <$> p1 <*> p2
-
--- identity to combination: combination f constant p ~= p
--- identity to selection: p `selection` constant = p
-constant :: Applicative m => a -> Pull m a
-constant = pure
-
-selection :: Monad m => Pull m a -> (a -> Pull m b) -> Pull m b -- 2
-selection = (>>=)
-
--- fromContext :: Monad m => (ctx -> a) -> Pull m a
--- fromContext = arr
-
--- -- TODO name?
--- foo :: Monad m => Pull m ctx' -> Pull m' a -> Pull m a
--- foo = (>>>)
-
--- -- TODO name?
--- bar :: Monad m => (ctx -> a) -> Pull m a
--- bar = arr
-
--- TODO name?
--- baz :: Monad m => Pull m a -> Pull m (ctx, d) (a, d)
--- baz = Control.Arrow.first
+ignoreWhenNot :: Applicative m => (a -> Bool) -> Push m a -> Push m a
+ignoreWhenNot f = pfilter (\a -> if f a then Just a else Nothing)

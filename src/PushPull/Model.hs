@@ -1,6 +1,6 @@
 module PushPull.Model
-  ( Push
-  , Pull
+  ( Push(..)
+  , Pull(..)
   , Cell
   , get
   , put
@@ -8,36 +8,16 @@ module PushPull.Model
   , liftedIO
   , liftPush
   , cell
-  , send
-  , push
-  , module Data.Void
-  , module Control.Exception.Base
-  , module Control.Concurrent.STM
-  , module Control.Category
-  , module Data.Functor.Contravariant
-  , module Data.Functor.Contravariant.Divisible
+  ,(>>>>)
   ) where
-
-import Prelude hiding ((.), id)
 
 import Data.Functor.Contravariant
 import Data.Functor.Contravariant.Divisible
 import Data.Void
--- import Data.Profunctor
-import Control.Concurrent
-import Control.Concurrent.STM
-import Control.Concurrent.STM.TBQueue
-import Control.Exception.Base
-import Control.Category
-import Control.Monad
-import qualified Control.Arrow as A
-import PushPull.STMExtras
 import Data.Functor
 import Data.Functor.Identity
 import Control.Monad.Trans.Class
-import Data.Either.Combinators
 import Control.Monad.IO.Class
-import Control.Monad.Reader.Class
 
 -- Pull - reads state in monadic way
 -- Represents variables, constants, context and derivations thereof, nouns,
@@ -69,6 +49,10 @@ liftedIO (Pull p) = Pull (liftIO p)
 -- values occuring in time, events, ephemeral, happening, discrete values
 
 newtype Push m a = Push { push :: a -> m () }
+
+(>>>>) :: a -> Push m a -> m ()
+(>>>>) = flip push
+infixr 0 >>>>
 
 instance Contravariant (Push m) where
   contramap f (Push p) = Push $ p . f
@@ -103,14 +87,6 @@ data Cell m a = Cell {
 
 cell :: Applicative m => String -> (a -> m ()) -> m a -> Cell m a
 cell name put get = Cell name (Push $ \a -> put a $> ()) (Pull get)
-
-send :: MonadIO m => (a -> IO ()) -> Push m a
-send am = Push $ \a -> liftIO (am a) $> ()
-
-read' :: Monad m => Pull m a -> Push m a -> Push m b
-read' (Pull pull) (Push push) = Push $ \a -> do
-  a <- pull
-  push a
 
 enrich :: Pull m a -> Push m (a, b) -> Push m b
 enrich = undefined

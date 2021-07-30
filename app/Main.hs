@@ -1,6 +1,5 @@
 module Main where
 
-import Prelude
 
 import PushPull.Form
 import Data.Time

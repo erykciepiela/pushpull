@@ -16,6 +16,7 @@ import Data.Maybe
 import PushPull.Form
 import Data.Monoid
 import Control.Monad.Trans
+import PushPull.Model
 
 newtype PositiveInt = PositiveInt Int deriving Show
 
@@ -52,7 +53,7 @@ validPerson :: PositiveInt -> NonEmptyString -> Title -> ShirtSize -> Either Str
 validPerson age name title shirtSize = if getPositiveInt age < 10 && length (getNonEmptyString name) > 10 then Left "Improper name for a child" else Right (Person age name title shirtSize)
 
 printConsole :: Show s => Push IO s
-printConsole = send print
+printConsole = Push print
 
 data Choices = Choices
   { shirtSizes :: [ShirtSize]
